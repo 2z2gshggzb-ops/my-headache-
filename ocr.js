@@ -1,28 +1,163 @@
-/* Optional in-browser OCR: Tesseract.js runs its OCR engine on-device.
-   Engine dependencies are fetched on first use from CDN; images are NOT uploaded.
-   The rest of the PWA continues to work offline if OCR is not installed. */
+/* RingConn screenshot reader — local OCR, v1.1.
+ * Image pixels are processed in the browser. On first use Tesseract.js and its
+ * English model are downloaded; the screenshot is never uploaded by this code.
+ * We deliberately leave uncertain values blank instead of guessing. */
 const CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-let ocrWorker=null;
-function addScript(src){return new Promise((resolve,reject)=>{if(window.Tesseract){resolve();return}const s=document.createElement('script');s.src=src;s.crossOrigin='anonymous';s.onload=resolve;s.onerror=()=>reject(new Error('تعذر تحميل محرك التعرف. يتطلب الإنترنت أول مرة.'));document.head.appendChild(s)})}
-export async function recognizeLocal(file,onProgress=()=>{}){
- if(!ocrWorker){onProgress('جاري تهيئة قراءة الصورة على الجهاز…');await addScript(CDN);
- if(!window.Tesseract?.createWorker)throw new Error('محرك التعرف غير متاح');
- ocrWorker=await window.Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text')onProgress(`قراءة الصورة ${Math.round((m.progress||0)*100)}%`);else if(m.status)onProgress(m.status)}});
- }
- const url=URL.createObjectURL(file);
- try{const {data}=await ocrWorker.recognize(url);return {text:data.text||'',confidence:data.confidence||0}}
- finally{URL.revokeObjectURL(url)}
+let worker;
+function script(src){return new Promise((ok,fail)=>{
+ if(window.Tesseract?.createWorker){ok();return}
+ const tag=document.createElement('script');tag.src=src;tag.crossOrigin='anonymous';tag.onload=ok;
+ tag.onerror=()=>fail(new Error('تعذر تحميل محرك قراءة النص؛ يلزم اتصال بالإنترنت في المرة الأولى.'));
+ document.head.appendChild(tag);
+})}
+async function ensureWorker(notify){
+ if(worker)return worker;
+ notify('تحميل محرك التعرف المحلي…');await script(CDN);
+ if(!window.Tesseract?.createWorker)throw Error('محرك التعرف غير متاح');
+ worker=await window.Tesseract.createWorker('eng',1,{logger:m=>{
+  if(m.status==='recognizing text')notify(`استخراج النص ${Math.round((m.progress||0)*100)}%`);
+ }});
+ return worker;
 }
-export function parseSleepOCR(original){
- const text=String(original||'').replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c))).replace(/[：]/g,':').replace(/[–—]/g,'-');
- const lines=text.split(/\n/).map(s=>s.trim()).filter(Boolean);
- const normalized=text.toLowerCase();
- function dur(s){if(!s)return '';s=s.toLowerCase();let m=s.match(/(\d{1,2})\s*[:h]\s*(\d{1,2})\b/);if(m&&+m[2]<60)return `${m[1].padStart(2,'0')}:${m[2].padStart(2,'0')}`;m=s.match(/(\d{1,2})\s*(?:h|hr|hour|ساعة|ساعات)\s*(\d{1,2})?\s*(?:m|min|دقيقة)?/);if(m)return `${m[1].padStart(2,'0')}:${String(m[2]||0).padStart(2,'0')}`;m=s.match(/(\d{1,3})\s*(?:min|m|دقيقة)/);if(m)return `${String(Math.floor(+m[1]/60)).padStart(2,'0')}:${String(+m[1]%60).padStart(2,'0')}`;return ''}
- const extract=(patterns)=>{for(const reg of patterns){for(let i=0;i<lines.length;i++){if(reg.test(lines[i].toLowerCase())){let same=lines[i].replace(reg,'');let x=dur(same);if(x)return x;for(let j=i+1;j<Math.min(i+3,lines.length);j++){x=dur(lines[j]);if(x)return x}}}}return ''};
- const fields={duration:extract([/total sleep|sleep duration|time asleep|actual sleep|sleep time|إجمالي النوم|مدة النوم|النوم الفعلي|sleep score/]),deep:extract([/deep sleep|deep\b|نوم عميق|العميق/]),light:extract([/light sleep|light\b|نوم خفيف|الخفيف/]),rem:extract([/rem sleep|\brem\b|حركة العين السريعة/]),awake:extract([/awake|wake time|وقت الاستيقاظ|مستيقظ/])};
- const ef=normalized.match(/(?:efficiency|كفاءة النوم)\s*[:\-]?\s*(\d{2,3})\s*%?/);
- if(ef)fields.efficiency=ef[1];
- const times=[...text.matchAll(/\b(\d{1,2}):([0-5]\d)\s*(am|pm)?\b/gi)].map(m=>m[0]);
- // Do not guess bedtime/wake time from unrelated screenshot labels.
- return {fields,rawText:text,lines,times};
+function canvasCrop(bitmap,rect){
+ const {width,height}=bitmap;const left=Math.max(0,Math.floor(width*rect[0]));
+ const top=Math.max(0,Math.floor(height*rect[1]));
+ const w=Math.min(width-left,Math.ceil(width*rect[2]));
+ const h=Math.min(height-top,Math.ceil(height*rect[3]));
+ const c=document.createElement('canvas');c.width=w;c.height=h;
+ const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,left,top,w,h,0,0,w,h);
+ return c;
+}
+async function recognizeCanvas(w,c){const data=await w.recognize(c);return {text:data?.data?.text||'',confidence:data?.data?.confidence||0}}
+/** Recognize bounded regions to avoid plot gridlines distracting the text engine.
+ * For unfamiliar layouts, fall back to whole-image recognition.
+ */
+export async function recognizeLocal(file,onProgress=()=>{}){
+ const w=await ensureWorker(onProgress);
+ let bitmap;
+ try{
+  bitmap=await createImageBitmap(file);
+  const portrait=bitmap.height>bitmap.width*1.45;
+  if(!portrait){onProgress('قراءة الصورة…');const full=await recognizeCanvas(w,file);return {...full,sections:{full:full.text}}}
+  onProgress('قراءة التاريخ وملخص النوم…');
+  const head=await recognizeCanvas(w,canvasCrop(bitmap,[0,.075,1,.235]));
+  onProgress('قراءة تاريخ اليوم المحدد…');
+  const selected=await recognizeCanvas(w,canvasCrop(bitmap,[.30,.10,.40,.085]));
+  onProgress('قراءة مراحل النوم…');
+  const stages=await recognizeCanvas(w,canvasCrop(bitmap,[0,.645,1,.33]));
+  let combined=[head.text,selected.text,stages.text].filter(Boolean).join('\n');
+  const phaseCount=(combined.match(/\b(?:awake|rem|light\s*sleep|deep\s*sleep)\b/gi)||[]).length;
+  if(phaseCount<2){
+   onProgress('محاولة احتياطية لقراءة كامل الصورة…');
+   const all=await recognizeCanvas(w,file);
+   combined+='\n'+all.text;
+   return {text:combined,confidence:Math.round((head.confidence+stages.confidence+all.confidence)/3),sections:{header:head.text,selectedDate:selected.text,stages:stages.text,full:all.text}};
+  }
+  return {text:combined,confidence:Math.round((head.confidence+stages.confidence)/2),sections:{header:head.text,selectedDate:selected.text,stages:stages.text}};
+ }finally{bitmap?.close?.()}
+}
+const normalize=x=>String(x||'')
+ .replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)))
+ .replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)))
+ .replace(/[：]/g,':').replace(/[–—]/g,'-')
+ .replace(/\u00a0/g,' ')
+ .replace(/\b(?:l|I)\s*(?=hr\b)/g,'1');
+const minutesToHHMM=minutes=>Number.isFinite(minutes)&&minutes>=0&&minutes<1440
+ ?`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`:'';
+function durationValue(s){
+ s=normalize(s).toLowerCase();
+ // Crucial: recognize "hr" BEFORE "h". Old version incorrectly read 1hr 28min as 01:00.
+ let m=s.match(/\b(\d{1,2})\s*(?:hours?|hrs?|hr|h)\.?\s*(\d{1,2})\s*(?:minutes?|mins?|min|m)\b/i);
+ if(m&&+m[2]<60)return minutesToHHMM(+m[1]*60+(+m[2]));
+ m=s.match(/\b(\d{1,2})\s*(?:hours?|hrs?|hr|h)\b/i);
+ if(m)return minutesToHHMM(+m[1]*60);
+ m=s.match(/\b(\d{1,3})\s*(?:minutes?|mins?|min)\b/i);
+ if(m)return minutesToHHMM(+m[1]);
+ // Only allow hh:mm when it occurs in a labelled value region, never in the whole page.
+ m=s.match(/\b(\d{1,2})\s*:\s*([0-5]\d)\b/);
+ if(m)return minutesToHHMM(+m[1]*60+(+m[2]));
+ return '';
+}
+const labels={
+ awake:/\b(?:awake|time\s*awake|wake\s*duration)\b|الاستيقاظ|مستيقظ/i,
+ rem:/\brem\b|حركة العين السريعة/i,
+ light:/\blight\s*sleep\b|النوم الخفيف/i,
+ deep:/\bdeep\s*sleep\b|النوم العميق/i,
+ timeInBed:/\btime\s*in\s*bed\b/i,
+ efficiency:/\bsleep\s*efficiency\b|كفاءة النوم/i,
+ duration:/\b(?:actual\s*sleep|total\s*sleep|sleep\s*duration|time\s*asleep)\b|النوم الفعلي|مدة النوم/i
+};
+const anyLabel=new RegExp(Object.values(labels).map(re=>`(?:${re.source})`).join('|'),'i');
+function nearby(label,re,lines){
+ for(let i=0;i<lines.length;i++){
+  let match=lines[i].match(re);if(!match)continue;
+  const bits=[lines[i].slice(match.index+match[0].length)];
+  for(let j=i+1;j<Math.min(i+4,lines.length);j++){
+   if(anyLabel.test(lines[j]))break;
+   bits.push(lines[j]);
+  }
+  for(let j=0;j<bits.length;j++){
+   const val=durationValue(bits[j]);if(val)return val;
+  }
+ }
+ return '';
+}
+function nearbyEfficiency(lines){
+ for(let i=0;i<lines.length;i++)if(labels.efficiency.test(lines[i])){
+  for(let j=i;j<Math.min(i+4,lines.length);j++){
+   if(j>i&&anyLabel.test(lines[j]))break;
+   const after=j===i?lines[j].replace(labels.efficiency,''):lines[j];
+   let m=after.match(/\b(\d{2,3})\s*%/);if(!m)m=after.trim().match(/^(\d{2,3})$/);
+   if(m&&+m[1]<=100)return m[1];
+  }
+ }
+ return '';
+}
+const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function selectedDate(text,baseDate){
+ const s=normalize(text);
+ const re=/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.,]?\s*(\d{1,2})(?:\s*,?\s*(20\d{2}))?\b/i;
+ const matches=[...s.matchAll(new RegExp(re.source,'gi'))];if(!matches.length)return null;
+ // Selected-date crop normally contains just the centered day; if not, prefer last date.
+ const m=matches[matches.length-1],month=months[m[1].slice(0,3).toLowerCase()],day=+m[2];
+ const base=new Date(baseDate||Date.now());const yrs=m[3]?[+m[3]]:[base.getFullYear()-1,base.getFullYear(),base.getFullYear()+1];
+ const possible=yrs.map(y=>new Date(y,month-1,day,12)).filter(d=>d.getMonth()===month-1&&d.getDate()===day).sort((a,b)=>Math.abs(a-base)-Math.abs(b-base));
+ if(!possible.length)return null;
+ const dt=possible[0];return {date:`${dt.getFullYear()}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`,yearInferred:!m[3]};
+}
+function toMinutes(s){if(!/^\d{2}:\d{2}$/.test(s||''))return null;const [h,m]=s.split(':').map(Number);return 60*h+m}
+/** Pure parser: accepts a Tesseract text string OR a section bundle. */
+export function parseSleepOCR(source,baseDate=new Date()){
+ const sections=typeof source==='string'?{full:source}:source?.sections||{full:source?.text||''};
+ const linesOf=s=>normalize(s).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const stages=linesOf(sections.stages||sections.full||''),head=linesOf(sections.header||sections.full||'');
+ const fields={duration:'',deep:'',light:'',rem:'',awake:'',efficiency:'',timeInBed:'',sleepDate:''};
+ const evidence={},warnings=[];
+ for(const key of ['deep','light','rem','awake']){
+  fields[key]=nearby(key,labels[key],stages);
+  if(fields[key])evidence[key]='تم ربطه باسم المرحلة';
+ }
+ fields.timeInBed=nearby('timeInBed',labels.timeInBed,head);
+ if(fields.timeInBed)evidence.timeInBed='مقروء من Time in Bed';
+ fields.duration=nearby('duration',labels.duration,head);
+ if(fields.duration)evidence.duration='مقروء مباشرة';
+ fields.efficiency=nearbyEfficiency(head);
+ if(fields.efficiency)evidence.efficiency='مقروء من Sleep Efficiency';
+ const detected=selectedDate(sections.selectedDate||'',baseDate)
+    ||selectedDate((sections.header||'').split(/\bTime\s*in\s*Bed\b/i)[0],baseDate);
+ if(detected){fields.sleepDate=detected.date;evidence.sleepDate=detected.yearInferred?'الشهر واليوم مقروءان؛ السنة مقدرة':'التاريخ مقروء'}
+ else warnings.push('لم نتمكن من قراءة التاريخ المحدد؛ اختره قبل الحفظ.');
+ const values=['deep','light','rem'].map(k=>toMinutes(fields[k]));
+ if(values.every(v=>v!==null)){
+  const calculated=minutesToHHMM(values.reduce((a,b)=>a+b,0));
+  if(!fields.duration){fields.duration=calculated;evidence.duration='محسوب من مجموع العميق والخفيف وREM';}
+  else if(Math.abs(toMinutes(fields.duration)-toMinutes(calculated))>5)warnings.push('إجمالي النوم لا يطابق مجموع المراحل؛ تحقق من القراءة.');
+ }
+ if(fields.timeInBed&&fields.duration&&toMinutes(fields.duration)>toMinutes(fields.timeInBed))warnings.push('النوم الفعلي أكبر من وقت السرير؛ راجع الأرقام.');
+ if(fields.timeInBed&&fields.efficiency&&fields.duration){
+  const implied=Math.round(100*toMinutes(fields.duration)/toMinutes(fields.timeInBed));
+  if(Math.abs(implied-Number(fields.efficiency))>5)warnings.push('كفاءة النوم تختلف عن حساب المدد؛ راجع الأرقام.');
+ }
+ if(!['deep','light','rem'].every(k=>fields[k]))warnings.push('بعض مراحل النوم لم تُقرأ بوضوح؛ تركناها فارغة.');
+ return {fields,evidence,warnings,rawText:Object.entries(sections).map(([k,v])=>`[${k}]\n${v}`).join('\n\n')};
 }
