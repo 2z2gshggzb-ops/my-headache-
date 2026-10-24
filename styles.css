@@ -20,3 +20,12 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .analysis-scope .segmented button{font-size:11px;padding:7px 5px;white-space:normal;line-height:1.35}
 .routine-item summary small{max-width:62%;text-align:left;line-height:1.45}
 .severity-described{position:absolute;bottom:0;left:50%;transform:translateX(-50%);font-size:19px;font-weight:bold;color:var(--head)}
+
+/* v1.8 — descriptive frequency comes first; diagnostic-style labels are avoided. */
+.insight-verdict{font-size:12px;line-height:1.7;margin:9px 0 0;color:var(--ink)}
+.routine-frequency{display:flex;align-items:center;gap:12px;margin:12px 0 5px;padding:11px;border-radius:12px;background:var(--soft)}
+.routine-frequency>strong{font-size:26px;color:var(--accent);font-variant-numeric:tabular-nums;flex-shrink:0}
+.routine-frequency>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.routine-frequency b{font-size:13px}.routine-frequency small{font-size:11px;color:var(--muted);line-height:1.5}
+.routine-conclusion{margin-top:5px}
+@media(max-width:380px){.routine-frequency{gap:9px;padding:9px}.routine-frequency>strong{font-size:23px}}
