@@ -41,3 +41,28 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .factor-total b{font-size:15px;color:var(--accent);font-variant-numeric:tabular-nums}
 .factor-total span{font-size:10px;color:var(--muted);display:block}
 .compare-half>small{line-height:1.55}
+
+
+/* v1.8.3: identify migraine days in the 0–100% severity timeline. */
+.severity-day.kind-migraine,.severity-jump-date.kind-migraine,.sev-swatch.kind-migraine{--sev-color:#8852c4}
+.severity-day.kind-headache,.severity-jump-date.kind-headache,.sev-swatch.kind-headache{--sev-color:#bb6b35}
+.severity-day.kind-heavy,.severity-jump-date.kind-heavy,.sev-swatch.kind-heavy{--sev-color:var(--accent)}
+.severity-day.kind-unknown,.severity-jump-date.kind-unknown,.sev-swatch.kind-unknown{--sev-color:#7c8894}
+.severity-day .severity-column{background:var(--sev-color,var(--accent))}
+.severity-day .severity-zero{border-color:var(--sev-color,var(--accent))}
+.severity-day .severity-described{color:var(--sev-color,var(--head))}
+.severity-day .severity-point{color:var(--sev-color,var(--ink));font-weight:750}
+.severity-day .severity-kind-label{box-sizing:border-box;height:18px;min-width:38px;max-width:43px;padding:2px 3px 0;border-radius:5px;font-size:10px;line-height:14px;white-space:nowrap;color:var(--sev-color,var(--ink));font-weight:750;background:color-mix(in srgb,var(--sev-color) 12%,var(--surface))}
+.severity-kind-placeholder{display:block;height:18px}
+.severity-plot{height:249px}
+.severity-layout{height:265px}
+.severity-legend{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:12px 0 4px;font-size:12px;color:var(--ink)}
+.severity-legend>span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.sev-swatch{display:inline-block;width:11px;height:11px;flex-shrink:0;border-radius:3px;background:var(--sev-color,var(--accent))}
+.severity-jump{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:7px 0 8px;font-size:11px;color:var(--muted)}
+.severity-jump-date{border:1px solid var(--sev-color,var(--line));border-radius:8px;padding:5px 8px;background:color-mix(in srgb,var(--sev-color) 8%,var(--surface));font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums;min-height:27px}
+.severity-jump-date:focus-visible{outline:2px solid var(--sev-color);outline-offset:2px}
+.severity-focused .severity-track{background:color-mix(in srgb,var(--sev-color,var(--accent)) 10%,transparent);border-radius:7px 7px 0 0}
+:root[data-theme=dark] .severity-day.kind-migraine,:root[data-theme=dark] .severity-jump-date.kind-migraine,:root[data-theme=dark] .sev-swatch.kind-migraine{--sev-color:#c4a2ff}
+:root[data-theme=dark] .severity-day.kind-headache,:root[data-theme=dark] .severity-jump-date.kind-headache,:root[data-theme=dark] .sev-swatch.kind-headache{--sev-color:#e4a170}
+:root[data-theme=dark] .severity-day.kind-unknown,:root[data-theme=dark] .severity-jump-date.kind-unknown,:root[data-theme=dark] .sev-swatch.kind-unknown{--sev-color:#b4c0ca}
