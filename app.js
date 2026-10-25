@@ -259,21 +259,18 @@ function water24Episodes(){
   all.sort((x,y)=>new Date(x.at)-new Date(y.at));
   const first=all[0],ms=new Date(first.at).getTime();
   const target=app.analysisMode==='all_symptoms'||all.some(r=>r.kind==='headache'||r.kind==='migraine');
-  // If the initial reading is an archival placeholder the onset is unknown.
-  return {key,first,ms,target,valid:Number.isFinite(ms)&&accurateAt(first)&&!all.some(r=>r.source==='retrospective-2024-diary')};
+  // Water-only policy chosen by the user: use the recorded clock even when
+  // the historical entry carries timeApprox. Keep its original provenance.
+  // The selectively collected 2024 diary stays out of quantified comparisons.
+  return {key,first,ms,target,valid:Number.isFinite(ms)&&!all.some(r=>r.source==='retrospective-2024-diary')};
  }).sort((a,b)=>a.ms-b.ms);
 }
 function water24Events(start,end){
- // If a day's water includes un-timed historical aggregates, no 24h split can
- // be justified for any window touching that calendar date.
- const startDate=localDate(new Date(start)),endDate=localDate(new Date(end-1));
- const dates=[startDate];
- if(endDate!==startDate)dates.push(endDate);
- const suspect=app.records.some(r=>r.type==='water'&&dates.includes(recordDate(r))&&(r.timeApprox||r.aggregate||r.timeExact===false));
- const valid=app.records.filter(r=>r.type==='water'&&r.kind!=='other'&&accurateAt(r)&&Number.isFinite(+r.ml)&&+r.ml>0&&new Date(r.at).getTime()>=start&&new Date(r.at).getTime()<end);
- if(suspect)return {status:'approx',water:null,events:valid.length};
+ // Water-only user preference: treat every recorded event clock as accepted,
+ // including timeApprox, aggregate and retrospective message timestamps.
+ // Preserve those flags in the source data; do not affect other analytics.
+ const valid=app.records.filter(r=>r.type==='water'&&r.kind!=='other'&&Number.isFinite(+r.ml)&&+r.ml>0&&r.at&&Number.isFinite(new Date(r.at).getTime())&&new Date(r.at).getTime()>=start&&new Date(r.at).getTime()<end);
  if(!valid.length)return {status:'missing',water:null,events:0};
- // Registered volume is NOT assumed to be exhaustive. No zero imputation.
  return {status:'measured',water:valid.reduce((n,r)=>n+Number(r.ml),0),events:valid.length};
 }
 function water24StatusForWindow(start,end,episodes){
@@ -289,7 +286,7 @@ function water24StatusForWindow(start,end,episodes){
  // prevent us from calling this a clean control window.
  const touched=[first,last];
  if(touched.some(d=>app.records.some(r=>recordDate(r)===d&&r.source==='retrospective-2024-diary')))return 'unknown';
- if(touched.some(d=>app.records.some(r=>recordDate(r)===d&&(documentedHeadNote(r)||(r.type==='headache'&&Number(r.severity)>0&&!accurateAt(r))))))return 'unknown';
+ if(touched.some(d=>app.records.some(r=>recordDate(r)===d&&documentedHeadNote(r))))return 'unknown';
  const observed=touched.every(d=>app.records.some(r=>recordDate(r)===d&&(['water','food','coffee','sleep','clear'].includes(r.type))));
  return observed?'clear':'unknown';
 }
@@ -340,9 +337,15 @@ function water24UpperHtml(w){
  const measured=w.upperMeasured.length,pct=measured?Math.round(100*w.upperLow/measured):null;
  const highlighted=w.riskIndex===0;
  const message=measured
-  ?`في ${w.upperLow} من ${measured} نوبات لها ماء مسجّل بوقت صالح، كان إجمالي المسجّل أقل من ${w.threshold} مل خلال الـ24 ساعة السابقة.`
-  :'ما فيه نوبات بوقت بداية وماء مسجّل صالحين لحساب الـ24 ساعة السابقة.';
- return `<div class="panel water24-panel"><h3>◉ الماء قبل النوبة — آخر 24 ساعة</h3><p class="mini">من منظور الصداع: نرجع 24 ساعة قبل بداية النوبة المسجلة، ولا نحسب الماء بعدها.</p><div class="water24-summary ${highlighted?'risk-emphasis':''}"><strong>${pct===null?'—':pct+'%'}</strong><div><b>ماء مسجّل أقل من ${w.threshold} مل</b><small>${E(message)}</small></div></div><p class="mini">${w.excluded} نوبات أخرى لم تدخل: توقيت الماء أو النوبة غير كافٍ. مجموع الماء المسجّل قد يكون أقل من الكمية التي شربتها فعلًا. لا يعتبر ارتفاع النسبة دليلًا على السبب.</p></div>`;
+  ?`في ${w.upperLow} من ${measured} نوبات لها ماء مسجّل بأوقات اعتمدتها، كان الإجمالي أقل من ${w.threshold} مل خلال الـ24 ساعة السابقة.`
+  :'لا توجد نوبات لها وقت بداية وماء مسجّل في الـ24 ساعة السابقة.';
+ const episodeRows=[...w.upperMeasured].sort((a,b)=>b.ms-a.ms).map(ep=>{
+  const onset=fmtShort(localDate(new Date(ep.ms)))+'، '+fmtTime(ep.ms);
+  const amount=ep.water.water;
+  return `<div class="water24-episode-row"><span>${E(onset)}</span><b>${amount.toLocaleString('ar-SA')} مل</b><small>${amount<w.threshold?'أقل من الحد المحدد':'عند الحد المحدد أو أعلى'}</small></div>`;
+ }).join('');
+ const details=measured?`<details class="water24-episodes"><summary>شوف كمية الموية قبل كل نوبة (${measured})</summary>${episodeRows}</details>`:'';
+ return `<div class="panel water24-panel"><h3>◉ الماء قبل النوبة — آخر 24 ساعة</h3><p class="mini">من منظور الصداع: نرجع 24 ساعة قبل بداية النوبة المسجلة، ولا نحسب الماء بعدها.</p><div class="water24-summary ${highlighted?'risk-emphasis':''}"><strong>${pct===null?'—':pct+'%'}</strong><div><b>ماء مسجّل أقل من ${w.threshold} مل</b><small>${E(message)}</small></div></div>${details}<p class="mini">${w.excluded} نوبات أخرى لم تدخل لعدم وجود ماء أو وقت بداية مسجل. تُعتمد الأوقات التقديرية حسب اختيارك، لكنها لا تثبت أن الشرب حصل في نفس الدقيقة أو أنه سبب الصداع.</p></div>`;
 }
 function water24LowerHtml(w){
  const [low,high]=w.grouped;
@@ -350,7 +353,7 @@ function water24LowerHtml(w){
  let desc='البيانات غير كافية للحكم؛ لن نبرز أي نسبة بالأحمر.';
  if(w.riskIndex!==-1)desc=`معدل الأعراض أعلى بعد «${w.riskIndex===0?'الماء الأقل':'الماء الأكثر'}» بفارق ${Math.abs(low.rate-high.rate)} نقطة مئوية، ويستحق المتابعة دون إثبات سبب.`;
  else if(w.enough)desc='المقارنة متاحة، لكن لا يظهر فرق كبير بما يكفي لتمييز عامل محدد.';
- return `<details class="routine-item water24-lower" open><summary>الماء — قبل النوبات بـ24 ساعة <small>${w.lower.length} فترات صالحة</small></summary><p class="mini">من منظور الروتين: نسجل ماء الـ24 ساعة المنتهية عند 12 ظهرًا، ثم نتابع ظهور نوبة جديدة خلال الـ24 ساعة التالية. الفترات غير المكتملة تُستبعد.</p><div class="compare-grid">${half(low,0)}${half(high,1)}</div><div class="routine-conclusion">${E(desc)}</div><p class="mini">فترات اليوم الواحد قد تتداخل مع فترات مجاورة؛ النسب استكشافية. الماء المسجّل ليس بالضرورة كامل ما شربته، ولا يُعتبر غياب تسجيل ماء شربًا بصفر مل.</p></details>`;
+ return `<details class="routine-item water24-lower" open><summary>الماء — قبل النوبات بـ24 ساعة <small>${w.lower.length} فترات صالحة</small></summary><p class="mini">من منظور الروتين: نسجل ماء الـ24 ساعة المنتهية عند 12 ظهرًا، ثم نتابع ظهور نوبة جديدة خلال الـ24 ساعة التالية. الفترات بدون ماء مسجّل أو متابعة كافية تُستبعد. ويُعتمد وقت كل تسجيل ماء حتى لو كان تقديريًا.</p><div class="compare-grid">${half(low,0)}${half(high,1)}</div><div class="routine-conclusion">${E(desc)}</div><p class="mini">فترات اليوم الواحد قد تتداخل مع فترات مجاورة؛ النسب استكشافية. الماء المسجّل ليس بالضرورة كامل ما شربته، ولا يُعتبر غياب تسجيل ماء شربًا بصفر مل.</p></details>`;
 }
 
 function comparisonModel(a){
@@ -471,7 +474,7 @@ function renderAnalytics(){
  ${analyticsSettingsHtml()}
  <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">اليوم المنتهي الذي تسجّل فيه روتينًا دون أعراض رأس يُصنّف تلقائيًا يومًا بلا صداع؛ الأيام بلا تسجيل لا تُعد أيامًا سليمة. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>استجابة أدوية النوبات</h3>${medicationSummary(a)}<h3 style="margin-top:18px">العلاج الوقائي</h3>${preventiveSummary(a)}<div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.9 (موية 24 ساعة + تنبيه الألوان)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.10 (موية 24 ساعة بالأوقات المعتمدة + تنبيه الألوان)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 function render(){const target=app.tab;view.innerHTML=target==='today'?renderToday():target==='history'?renderHistory():target==='analytics'?renderAnalytics():renderSettings();document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===target));if(target==='analytics'){const chart=view.querySelector('.severity-scroll');if(chart)chart.scrollLeft=chart.scrollWidth}}
 // --- Input and screenshot workflow ---
 function textNumbers(s){return s.replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)))}

@@ -77,3 +77,11 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .water24-summary>strong{font-size:28px;color:var(--accent);flex-shrink:0;font-variant-numeric:tabular-nums}
 .water24-summary b{font-size:13px;display:block}.water24-summary small{font-size:11px;color:var(--muted);display:block;line-height:1.6;margin-top:3px}
 .water24-panel{border-style:solid}.water24-lower .compare-half>span{min-height:36px}
+
+/* v1.8.10: per-episode water amounts, without changing other analytics */
+.water24-episodes{margin-top:12px;padding:10px 12px;border:1px solid var(--border, #dfe7eb);border-radius:12px}
+.water24-episodes summary{font-weight:700;cursor:pointer;font-size:.9rem}
+.water24-episode-row{display:flex;align-items:center;gap:8px;padding:9px 2px;flex-wrap:wrap;border-bottom:1px solid var(--border, #e3e9ec);font-size:.85rem}
+.water24-episode-row:last-child{border-bottom:0}
+.water24-episode-row b{margin-inline-start:auto;white-space:nowrap}
+.water24-episode-row small{width:100%;color:var(--muted, #6a7b86)}
