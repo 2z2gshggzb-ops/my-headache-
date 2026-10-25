@@ -35,3 +35,9 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .timing-audit summary { cursor:pointer; font-weight: 600; }
 .timing-audit-list { margin-top: 10px; display:grid; gap:8px; color:var(--muted, #697f8a); }
 .timing-audit-list > div { border-bottom:1px solid var(--line,#d9e3e7); padding-bottom:6px; }
+
+/* v1.8.2: keep recorded factor-day totals visually distinct from eligible outcome days. */
+.factor-total{font-size:11px;line-height:1.55;color:var(--ink);margin:5px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.factor-total b{font-size:15px;color:var(--accent);font-variant-numeric:tabular-nums}
+.factor-total span{font-size:10px;color:var(--muted);display:block}
+.compare-half>small{line-height:1.55}
