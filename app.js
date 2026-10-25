@@ -243,183 +243,118 @@ function hasKnownOutcome(row){
  if(app.analysisMode==='headache_only'&&row.unspecifiedSymptoms)return false;
  return row.kind==='symptoms_only'||row.kind==='clear';
 }
-// --- v1.8.7: an episode-first lookback and an outcome-independent routine cohort. ---
-// The two panels answer different questions and deliberately use different
-// sampling frames.  Case-triggered lookbacks must NEVER be treated as
-// prospective probabilities: the lower panel uses fixed, nonoverlapping
-// observation/follow-up intervals instead.
-const HOUR_MS=3600000, DAY_MS=24*HOUR_MS;
-function windowDate(ms){return localDate(new Date(ms))}
-function inPeriod(t,a,b){return Number.isFinite(t)&&t>=a&&t<b}
-function eventMs(r){return new Date(r.at).getTime()}
-function preciseRecord(r){return accurateAt(r)&&Number.isFinite(eventMs(r))}
-function symptomScope(k){return app.analysisMode==='all_symptoms'||k==='headache'||k==='migraine'}
-function everyEpisodeStart(){
- const groups=new Map();
- for(const r of app.records){
-  if(r.type!=='headache'||!Number.isFinite(Number(r.severity))||Number(r.severity)<=0)continue;
-  const key=r.episodeId||r.id;
-  if(!groups.has(key))groups.set(key,[]);
-  groups.get(key).push(r);
- }
- return [...groups.values()].map(rows=>{
-  rows.sort((a,b)=>eventMs(a)-eventMs(b));
-  const first=rows[0];
-  return {at:eventMs(first),valid:preciseRecord(first)&&!(/بدأ اليوم بثقل|بدأ اليوم ب|وقت .*جرعة .*القراءة قربها|بدأ قبل/.test(String(first.notes||''))),first,kind:rows.some(x=>x.kind==='migraine')?'migraine':rows.some(x=>x.kind==='headache')?'headache':rows.some(x=>x.kind==='unknown')?'unknown':'heavy',
-   hasTarget:rows.some(x=>symptomScope(x.kind))};
- }).filter(x=>Number.isFinite(x.at));
-}
-function temporalFactors(cfg){return [
- {id:'sleep',title:'النوم',groups:[`نوم أقل من ${cfg.sleepHours} ساعات`,`نوم ${cfg.sleepHours} ساعات فأكثر`],get:f=>f.sleep===null?null:(f.sleep<cfg.sleepHours*60?0:1),note:'آخر نوم مكتمل قبل نهاية الفترة؛ لا يُستخدم النوم الذي انتهى بعدها'},
- {id:'water',title:'الماء',groups:[`ماء مسجّل أقل من ${cfg.waterMl} مل`,`ماء مسجّل ${cfg.waterMl} مل فأكثر`],get:f=>f.water===null?null:(f.water<cfg.waterMl?0:1),note:'الماء المُسجّل بدقة خلال 24 ساعة؛ انخفاض الرقم لا يثبت أن كل الماء شُرب وسُجّل'},
- {id:'coffee',title:'عدد مرات القهوة',groups:['قهوة واحدة','قهوتان فأكثر'],get:f=>f.coffee===null?null:(f.coffee===1?0:1),note:'القهوة المسجلة بوقت مؤكد؛ الأيام بلا قهوة مسجلة ليست إثباتًا لعدم الشرب'},
- {id:'breakfast',title:'الفطور بعد الاستيقاظ',groups:[`فطور خلال ${cfg.timingMinutes} دقيقة من الاستيقاظ`,`فطور بعد ${cfg.timingMinutes} دقيقة من الاستيقاظ`],get:f=>f.breakfastDelay===null?null:(f.breakfastDelay<=cfg.timingMinutes?0:1),note:'يجب أن يكون الفطور والاستيقاظ موثّقين، وأن يكون الفطور قبل نهاية الفترة'},
- {id:'coffeeTime',title:'توقيت أول قهوة',groups:[`أول قهوة خلال ${cfg.timingMinutes} دقيقة من الاستيقاظ`,`أول قهوة بعد ${cfg.timingMinutes} دقيقة من الاستيقاظ`],get:f=>f.coffeeDelay===null?null:(f.coffeeDelay<=cfg.timingMinutes?0:1),note:'يجب أن تكون أول قهوة والاستيقاظ موثّقين، وأن تكون القهوة قبل نهاية الفترة'},
- {id:'routine',title:'تغيّر موعد النوم',groups:['موعد النوم قريب من المعتاد','تغيّر واضح في موعد النوم'],get:f=>f.changedRoutine===null?null:(f.changedRoutine?1:0),note:'يحتاج على الأقل 7 ليالٍ سابقة لمعرفة الموعد المعتاد'},
- {id:'wake',title:'تغيّر الاستيقاظ',groups:['استيقاظ أبكر من المعتاد','استيقاظ متأخر عن المعتاد'],get:f=>f.wakeShift==='early'?0:f.wakeShift==='late'?1:null,note:'لا تُدرج الأوقات القريبة من المعتاد ضمن المبكر أو المتأخر'}
- ];}
-// Absolute 24-hour interval, not a Gregorian-day sum.  Never add measurements
-// recorded after the anchor or turn aggregate/approximate archive hours into
-// precision that the original record does not have.
-function featuresBefore(anchor){
- const cfg=analysisConfig(),from=anchor-DAY_MS;
- const inside=r=>inPeriod(eventMs(r),from,anchor);
- const dated=app.records.filter(r=>recordDate(r)>=windowDate(from)&&recordDate(r)<=windowDate(anchor));
- const waterRows=app.records.filter(r=>r.type==='water'&&r.kind!=='other'&&+r.ml>0&&inside(r));
- const unreliableWater=dated.some(r=>r.type==='water'&&r.kind!=='other'&&+r.ml>0&&(!preciseRecord(r)||r.aggregate));
- const accurateWater=waterRows.filter(r=>preciseRecord(r)&&!r.aggregate);
- const water=unreliableWater||!accurateWater.length?null:accurateWater.reduce((sum,r)=>sum+Number(r.ml),0);
- const coffeeExact=app.records.filter(r=>isCoffee(r)&&inside(r)&&preciseRecord(r));
- const unreliableCoffee=dated.some(r=>isCoffee(r)&&!preciseRecord(r));
- const coffee=unreliableCoffee||!coffeeExact.length?null:coffeeExact.length;
- // A sleep entry's at is an administrative 09:00 timestamp: reconstruct its
- // real wake time from sleepDate and wakeTime instead.
- const sleeps=app.records.filter(r=>r.type==='sleep'&&r.sleepDate&&Number.isFinite(duration(r.duration))&&!r.timeApprox&&clockMinutes(r.wakeTime)!==null).map(r=>({r,end:new Date(`${r.sleepDate}T${clockInput(r.wakeTime)}:00`).getTime()}))
-   .filter(x=>inPeriod(x.end,from,anchor)).sort((a,b)=>b.end-a.end);
- const chosen=sleeps[0]||null,sl=chosen?.r||null;
- let sleep=sl?duration(sl.duration):null;
- if(sl?.napStart&&sl?.napEnd){
-  const napStartMs=new Date(`${sl.sleepDate}T${clockInput(sl.napStart)}:00`).getTime();
-  // RingConn's top-line sleep total can include a nap recorded *later*. Do
-  // not allow later nap minutes to leak into an earlier onset's exposure.
-  const np=napMinutes(sl.napStart,sl.napEnd);
-  if(Number.isFinite(np)&&napStartMs>=anchor&&sleep!==null)sleep=Math.max(0,sleep-np);
- }
- const wake=chosen?.end??null;
- const timeAfterWake=rs=>{
-  if(wake===null)return null;
-  const ds=rs.filter(r=>inside(r)&&preciseRecord(r)&&eventMs(r)>=wake&&eventMs(r)-wake<=12*HOUR_MS).map(r=>(eventMs(r)-wake)/60000);
-  return ds.length?Math.min(...ds):null;
- };
- const breakfastDelay=timeAfterWake(app.records.filter(r=>r.type==='food'&&r.meal==='breakfast'));
- const coffeeDelay=unreliableCoffee?null:timeAfterWake(coffeeExact);
- const baseline=sl?routineBaseline(sl.sleepDate):null;
- const bed=clockMinutes(sl?.bedtime),wakeMinute=clockMinutes(sl?.wakeTime);
- const eligibleBaseline=sl&&baseline&&bed!==null&&wakeMinute!==null;
- const bedDiff=eligibleBaseline?Math.abs(clockDelta(bed,baseline.bed)):null;
- const wakeDiff=eligibleBaseline?clockDelta(wakeMinute,baseline.wake):null;
- return {sleep,water,coffee,breakfastDelay,coffeeDelay,
-  changedRoutine:eligibleBaseline?(bedDiff>cfg.routineDeviation||Math.abs(wakeDiff)>cfg.routineDeviation):null,
-  wakeShift:wakeDiff===null?null:(wakeDiff>cfg.wakeTolerance?'late':wakeDiff<(-cfg.wakeTolerance)?'early':null)};
-}
-function retroNear(a,b){return app.records.some(r=>r.source==='retrospective-2024-diary'&&recordDate(r)>=windowDate(a)&&recordDate(r)<=windowDate(b));}
-function symptomsIn(a,b){return app.records.some(r=>r.type==='headache'&&+r.severity>0&&inPeriod(eventMs(r),a,b));}
-function notesNear(a,b){return app.records.some(r=>documentedHeadNote(r)&&recordDate(r)>=windowDate(a)&&recordDate(r)<=windowDate(b));}
-// End each prospective exposure period at 12:00 local time; observe the NEXT
-// 24 hours. The exposure periods and outcome periods are both nonoverlapping,
-// and their selection does not depend on an observed headache.
-function eligibleExposure(anchor,episodes){
- const start=anchor-DAY_MS,end=anchor+DAY_MS;
- if(end>now().getTime()||retroNear(start,end))return false;
- if(symptomsIn(start,anchor)||notesNear(start,anchor))return false;
- const earlier=[...episodes].filter(x=>x.at<start).sort((a,b)=>b.at-a.at)[0];
- if(earlier&&start-earlier.at<DAY_MS)return false;
- return true;
-}
-function fixedWindowOutcome(anchor,episodes){
- const end=anchor+DAY_MS;
- if(!eligibleExposure(anchor,episodes))return null;
- const relevant=episodes.filter(x=>inPeriod(x.at,anchor,end));
- if(relevant.some(x=>!x.valid&&x.hasTarget))return null;
- if(notesNear(anchor,end))return null;
- const target=relevant.some(x=>x.valid&&x.hasTarget);
- if(!target){
-  // Unknown/undated symptoms must never become 'no headache' controls.
-  if(relevant.some(x=>x.kind==='unknown'))return null;
-  const affectedDays=[windowDate(anchor),windowDate(end-1)];
-  if(affectedDays.some(d=>dayHeadStatus(d)==='unknown'))return null;
-  // Proof of ongoing diary activity (rather than an empty calendar).
-  const logged=app.records.some(r=>['water','sleep','food','coffee','clear'].includes(r.type)&&inPeriod(eventMs(r),anchor,end));
-  if(!logged)return null;
- }
- return target?1:0;
-}
 function comparisonModel(a){
- const cfg=analysisConfig(),definitions=temporalFactors(cfg),episodes=everyEpisodeStart();
- const withinPeriod=x=>a.days.includes(windowDate(x.at));
- const caseCandidates=episodes.filter(x=>x.hasTarget&&withinPeriod(x));
- const caseValid=caseCandidates.filter(x=>x.valid&&!retroNear(x.at-DAY_MS,x.at));
- const onsetRows=caseValid.map(x=>({at:x.at,f:featuresBefore(x.at)}));
- const anchors=a.days.map(d=>new Date(`${d}T12:00:00`).getTime());
- const exposureRows=anchors.filter(t=>eligibleExposure(t,episodes)).map(t=>({t,f:featuresBefore(t)}));
- const routineRows=exposureRows.map(x=>({...x,outcome:fixedWindowOutcome(x.t,episodes)})).filter(x=>x.outcome!==null);
+ const cfg=analysisConfig(),rows=analyticsRows(a);
+ // Crucially this cohort is independent of the selected symptom filter.
+ const eligibleAll=rows.filter(hasKnownOutcome);
+ const definitions=[
+  {id:'sleep',title:'مدة النوم',note:'النوم الفعلي في ليلة الاستيقاظ؛ لا نعتمد القيلولة ضمن هذه المدة',groups:[`أقل من ${cfg.sleepHours} ساعات`,`${cfg.sleepHours} ساعات فأكثر`],summaryGroups:[`نوم أقل من ${cfg.sleepHours} ساعات`,`نوم ${cfg.sleepHours} ساعات فأكثر`],get:r=>r.sleep===null?null:(r.sleep<cfg.sleepHours*60?0:1)},
+  {id:'water',title:'الماء المسجل',note:'إجمالي الماء المُدخل خلال اليوم؛ قد يكون ناقصًا، ولا يثبت كمية الماء قبل بدء الصداع',groups:[`أقل من ${cfg.waterMl} مل`,`${cfg.waterMl} مل فأكثر`],summaryGroups:[`ماء مسجّل أقل من ${cfg.waterMl} مل`,`ماء مسجّل ${cfg.waterMl} مل فأكثر`],get:r=>r.water===null?null:(r.water<cfg.waterMl?0:1)},
+  {id:'coffee',title:'عدد مرات القهوة',note:'تسجيلات القهوة فقط؛ عدم تسجيل قهوة لا يعني عدم شربها',groups:['مرة واحدة','مرتان فأكثر'],summaryGroups:['قهوة واحدة','قهوتان فأكثر'],get:r=>r.coffee===null?null:(r.coffee===1?0:1)},
+  {id:'breakfast',title:'الفطور بعد الاستيقاظ',note:'وقت الفطور والاستيقاظ مؤكدان. إذا لم يُعرف وقت الصداع، فهذه مقارنة تزامن خلال اليوم وليست دليلًا أن الفطور سبقه',groups:[`خلال ${cfg.timingMinutes} دقيقة`,`بعد ${cfg.timingMinutes} دقيقة`],summaryGroups:[`فطور خلال ${cfg.timingMinutes} دقيقة من الاستيقاظ`,`فطور بعد ${cfg.timingMinutes} دقيقة من الاستيقاظ`],get:r=>r.breakfastDelay===null?null:(r.breakfastDelay<=cfg.timingMinutes?0:1)},
+  {id:'coffeeTime',title:'أول قهوة بعد الاستيقاظ',note:'وقت القهوة والاستيقاظ مؤكدان. إذا لم يُعرف وقت الصداع، فهذه مقارنة تزامن خلال اليوم وليست دليلًا أن القهوة سبقته',groups:[`خلال ${cfg.timingMinutes} دقيقة`,`بعد ${cfg.timingMinutes} دقيقة`],summaryGroups:[`أول قهوة خلال ${cfg.timingMinutes} دقيقة من الاستيقاظ`,`أول قهوة بعد ${cfg.timingMinutes} دقيقة من الاستيقاظ`],get:r=>r.coffeeDelay===null?null:(r.coffeeDelay<=cfg.timingMinutes?0:1)},
+  {id:'routine',title:'تغيّر موعد النوم',note:'مقارنة موعد النوم أو الاستيقاظ بآخر 14 يومًا مع توافر 7 ليالٍ مكتملة على الأقل',groups:['قريب من المعتاد','تغيّر واضح'],summaryGroups:['موعد نوم واستيقاظ قريبان من المعتاد','تغيّر واضح في موعد النوم أو الاستيقاظ'],get:r=>r.changedRoutine===null?null:(r.changedRoutine?1:0)},
+  {id:'wake',title:'وقت الاستيقاظ',note:'مقارنة بموعد الاستيقاظ المعتاد؛ الوقت القريب من المعتاد لا يوضع في أيّ مجموعة',groups:['أبكر من المعتاد','متأخر عن المعتاد'],summaryGroups:['استيقاظ أبكر من المعتاد','استيقاظ متأخر عن المعتاد'],get:r=>r.wakeShift===null?null:(r.wakeShift==='early'?0:1)}
+ ];
  const result=definitions.map(def=>{
-  const measuredCases=onsetRows.map(r=>({...r,group:def.get(r.f)})).filter(x=>x.group!==null);
-  const groupStats=[0,1].map(i=>{
-   const exposure=routineRows.filter(x=>def.get(x.f)===i),positive=exposure.filter(x=>x.outcome===1).length;
-   return {n:exposure.length,head:positive,rate:exposure.length?Math.round(positive*100/exposure.length):null};
+  // All days with a measured factor, even if headache outcome is missing.
+  const measured=rows.filter(r=>def.get(r)!==null);
+  // Same risk-comparison cohort in both filter modes; case-only diaries and
+  // outcome-unknown days never turn into symptom-free controls.
+  const observed=eligibleAll.filter(r=>def.get(r)!==null);
+  const known=observed.filter(r=>!isCaseOnlyRetrospective(r));
+  const unknownOnset=known.filter(r=>selectedSymptom(r)&&r.headacheClockUnknown).length;
+  const timingDetails=['breakfast','coffeeTime'].includes(def.id)?rows.filter(r=>r.records.some(x=>x.type==='sleep'||(def.id==='breakfast'?x.type==='food'&&x.meal==='breakfast':isCoffee(x)))).map(r=>({day:r.day,reason:r.kind==='unknown'?(r.day===localDate(now())?'اليوم الحالي لم ينتهِ؛ يُفحص بعد اكتماله':'حالة الصداع أو خلو اليوم منه غير محددة، لذلك لا يدخل في المقارنة'):timingDayReason(r,def.id==='breakfast'?'breakfast':'coffeeTime')})).sort((a,b)=>b.day.localeCompare(a.day)):[];
+  const symptomAll=observed.filter(selectedSymptom);
+  const symptomComparable=known.filter(selectedSymptom),controlComparable=known.filter(r=>!selectedSymptom(r));
+  const counts=group=>{
+   const arr=known.filter(r=>def.get(r)===group);
+   const head=arr.filter(selectedSymptom).length;
+   return {n:arr.length,head,clear:arr.length-head,rate:arr.length?Math.round(100*head/arr.length):null};
+  };
+  const g0=counts(0),g1=counts(1);
+  const totals=[0,1].map(group=>{
+   const n=measured.filter(r=>def.get(r)===group).length;
+   const eligible=known.filter(r=>def.get(r)===group).length;
+   return {n,eligible,unassessed:n-eligible};
   });
-  const cases=[0,1].map(i=>measuredCases.filter(x=>x.group===i).length);
-  // Fixed counts of observed routines, independent of selected symptom filter.
-  const groupTotals=[0,1].map(i=>exposureRows.filter(x=>def.get(x.f)===i).length);
-  const diff=groupStats.every(g=>g.rate!==null)?groupStats[0].rate-groupStats[1].rate:null;
-  const allObs=groupStats[0].n+groupStats[1].n;
-  const nPositive=groupStats[0].head+groupStats[1].head;
-  const ready=groupStats.every(g=>g.n>=5)&&nPositive>=5&&(allObs-nPositive)>=5;
-  const high=ready&&diff!==null&&Math.abs(diff)>=20?(diff>0?0:1):null;
-  const dominant=cases[0]>=cases[1]?0:1;
-  return {...def,cases,totalCases:measuredCases.length,dominant,groupStats,groupTotals,diff,ready,high,
-   windowCount:allObs,casesMissing:caseValid.length-measuredCases.length,
-   sampleOutcomePositive:nPositive,sampleOutcomeNegative:allObs-nPositive};
+  const hints=[0,1].map((group,i)=>{
+   const count=symptomAll.filter(r=>def.get(r)===group).length;
+   const headTotal=symptomAll.length;
+   const pct=headTotal?Math.round(100*count/headTotal):null;
+   const overall=measured.length?Math.round(100*totals[i].n/measured.length):null;
+   const inComparableHead=symptomComparable.filter(r=>def.get(r)===group).length;
+   const pH=symptomComparable.length?100*inComparableHead/symptomComparable.length:null;
+   const pC=controlComparable.length?100*controlComparable.filter(r=>def.get(r)===group).length/controlComparable.length:null;
+   const self=[g0,g1][i],other=[g0,g1][1-i];
+   const rateDifference=self.rate!==null&&other.rate!==null?self.rate-other.rate:null;
+   const comparativeReady=symptomComparable.length>=5&&controlComparable.length>=5&&self.n>=5&&other.n>=5;
+   const qualified=comparativeReady&&rateDifference>=20&&pH!==null&&pC!==null&&pH-pC>=20;
+   return {title:def.groups[i],summaryTitle:def.summaryGroups[i],count,pct,overall,headTotal,totalDays:measured.length,
+    pH:pH===null?null:Math.round(pH),pC:pC===null?null:Math.round(pC),
+    rateDifference,qualified,comparativeReady,groupIndex:i};
+  });
+  const preferred=hints.slice().sort((a,b)=>(b.pct??-1)-(a.pct??-1)||b.count-a.count)[0];
+  const hasRetrospective=observed.some(isCaseOnlyRetrospective);
+  return {...def,available:measured.length,groupTotals:totals,known:known.length,
+   described:observed.length,excluded:eligibleAll.length-observed.length,
+   excludedStatus:observed.length-known.length,unknownOutcome:measured.length-observed.length,
+   unknownOnset,timingDetails,counts:[g0,g1],hints,preferred,hasRetrospective,
+   heavyControls:known.filter(r=>r.kind==='symptoms_only').length,
+   sample:{head:symptomComparable.length,clear:controlComparable.length},
+   summarySupported:preferred.headTotal>=3&&preferred.count>=3&&preferred.pct>50};
  });
- return {result,caseCount:caseValid.length,caseCandidates:caseCandidates.length,
-  skippedCaseCount:caseCandidates.length-caseValid.length,routineWindowCount:routineRows.length,mode:app.analysisMode};
+ const recurring=result.filter(f=>f.summarySupported).sort((a,b)=>{
+  const aq=a.hints.some(x=>x.qualified)?1:0,bq=b.hints.some(x=>x.qualified)?1:0;
+  return bq-aq||b.preferred.count-a.preferred.count||b.preferred.pct-a.preferred.pct;
+ }).slice(0,5);
+ const strong=result.flatMap(f=>f.hints.filter(x=>x.qualified).map(x=>({...x,factor:f.title,id:f.id})))
+  .sort((a,b)=>(b.rateDifference??0)-(a.rateDifference??0));
+ return {result,recurring,strong,rows,eligible:eligibleAll,mode:app.analysisMode};
 }
 function keyInsightsHtml(model){
- const selected=model.mode==='all_symptoms'?'أعراض الرأس':'الصداع والشقيقة';
- const sortedFactors=model.result.filter(x=>x.totalCases>0).sort((a,b)=>((b.totalCases>=3)-(a.totalCases>=3))||b.totalCases-a.totalCases||(b.cases[b.dominant]/b.totalCases-a.cases[a.dominant]/a.totalCases));
- return `<div class="panel"><div class="temporal-heading"><span class="temporal-step">١</span><div><h3>ماذا تكرر قبل النوبات؟</h3><p class="mini">من منظور ${E(selected)}: رجعنا 24 ساعة قبل أول تسجيل موثوق لبداية كل نوبة.</p></div></div>
- <p class="mini">${model.caseCount} نوبة بأول تسجيل يمكن استخدامه كنقطة بداية داخل الفترة${model.skippedCaseCount?' · '+model.skippedCaseCount+' نوبة أخرى وقت بدايتها غير مؤكد':''}. تختلف أعداد النوبات الصالحة من عامل لآخر.</p>
- ${sortedFactors.length?`<div class="temporal-insights">${sortedFactors.map(f=>{const i=f.dominant,n=f.cases[i],total=f.totalCases,pct=Math.round(100*n/total);return `<div class="temporal-insight ${total<3?'limited':''}"><strong>${pct}%</strong><div><b>${E(f.groups[i])}</b><small>${n} من ${total} نوبة موثقة بيانات ${E(f.title)} قبلها${total<5?' · عينة صغيرة':''}</small></div></div>`}).join('')}</div>`:'<div class="empty">ما عندنا نوبات كافية بتوقيت بداية موثوق وروتين موثّق قبلها. ما راح نخمن.</div>'}
- <p class="mini">هذه نسب تكرار قبل النوبات، وليست دليلًا على أنها أسبابها. لا نستخدم ما سُجّل بعدها.</p></div>`;
+ const desc=model.mode==='all_symptoms'?'أيام أعراض الرأس':'أيام الصداع والشقيقة';
+ if(!model.recurring.length)return `<div class="panel"><h3>ما الذي تكرر مع الصداع؟</h3><div class="empty">نحتاج أيام أعراض أكثر مع بيانات روتين حتى نعرض نمطًا متكررًا (3 أيام على الأقل).</div><p class="mini">وجود عامل في أيام الصداع وحده لا يعني أنه سببه. لا تُعتبر الأيام غير المسجلة أيامًا سليمة.</p></div>`;
+ return `<div class="panel"><h3>ما الذي تكرر مع الصداع؟</h3><p class="mini">الرقم الكبير هو حصة الروتين من أيام الأعراض التي سُجلت فيها بيانات هذا العامل، وليس احتمال إصابتك بالصداع.</p><div class="insights">${model.recurring.map(f=>{
+ const v=f.preferred,signal=f.hints.find(x=>x.qualified),clear=f.sample.clear;
+ let message='متكرر في أيام الأعراض، لكن لا توجد بيانات سليمة كافية لمعرفة إن كان عاملًا مميزًا.';
+ if(signal&&signal.groupIndex===v.groupIndex) message='ظهر معه معدل أعراض أعلى من المجموعة الأخرى؛ ارتباط يستحق المتابعة.';
+ else if(v.comparativeReady&&v.rateDifference!==null&&Math.abs(v.rateDifference)<10)message='شائع في أيامك عمومًا، ولا يظهر فرق واضح في معدّل الصداع.';
+ else if(v.comparativeReady&&v.rateDifference!==null&&v.rateDifference<=0)message='متكرر في أيام الأعراض، لكن معدل الصداع ليس أعلى معه.';
+ else if(v.comparativeReady)message='متكرر، لكن الفرق ما زال غير حاسم.';
+ const retro=f.hasRetrospective?' · تشمل مذكرات قديمة انتقائية؛ لا تُستخدم لحساب معدل الصداع.':'';
+ return `<div class="insight"><div class="insight-top"><strong dir="ltr">${v.pct}%</strong><span>${E(v.summaryTitle)}</span></div><div class="insight-track"><span style="width:${v.pct}%"></span></div><div class="insight-meta">${v.count} من ${v.headTotal} ${E(desc)} لديها بيانات ${E(f.title)} · وُجد هذا الروتين في ${v.overall}% من جميع أيام ${E(f.title)} المسجلة.</div><p class="insight-verdict">${E(message)}</p>${retro?`<p class="mini">${E(retro)}</p>`:''}</div>`;
+ }).join('')}</div>${model.strong.length?`<p class="mini"><strong>أولوية للمتابعة:</strong> ${model.strong.map(x=>E(x.summaryTitle)).join('، ')}. هذه ارتباطات وليست إثباتًا للسبب.</p>`:'<p class="mini">التكرار يوضح ما يصاحب الأعراض، وليس بالضرورة ما يرفع احتمالها. انظر المقارنة أدناه.</p>'}</div>`;
 }
 function comparisonHtml(model){
- const target=model.mode==='all_symptoms'?'أعراض رأس':'صداع أو شقيقة';
- const list=model.result.filter(f=>f.groupTotals.some(n=>n>0)).map((f,index)=>{
-  const [g0,g1]=f.groupStats;
-  const grp=(g,i)=>`<div class="temporal-side ${f.high===i?'alert':''}"><span class="temporal-side-label">${E(f.groups[i])}</span><strong>${g.rate===null?'—':g.rate+'%'}</strong><small>${g.head} من ${g.n} فترة متابعة${g.n<5&&g.n>0?' · قليلة':''}</small><small class="temporal-measured">${f.groupTotals[i]} فترة روتين مسجلة</small></div>`;
-  const gap=f.diff===null?null:Math.abs(f.diff);
-  const verdict=f.high!==null?`معدل ${E(target)} أعلى مع «${E(f.groups[f.high])}» بفارق ${gap} نقطة. يستحق المتابعة، لكنه لا يثبت السببية.`:
-   (g0.n===0||g1.n===0)?'لا يمكن المقارنة بعد؛ إحدى مجموعتي الروتين ليس لديها فترات متابعة كافية.':
-   !f.ready?'البيانات ما زالت قليلة للمقارنة الموثوقة؛ لذلك ما أبرزنا نسبة بالأحمر.':
-   gap<10?'المعدلان متقاربان؛ ما ظهر فرق واضح.':'فيه فرق، لكنه غير كافٍ لإبرازه كارتباط واضح.';
-  return `<details class="routine-item temporal-routine" ${index===0?'open':''}><summary>${E(f.title)}<small>${f.windowCount} فترة صالحة للمقارنة</small></summary>
-   <div class="temporal-pair">${grp(g0,0)}<span class="temporal-versus">مقابل</span>${grp(g1,1)}</div>
-   <div class="temporal-verdict ${f.high!==null?'has-signal':''}">${f.high!==null?'<b>لفت انتباه</b> · ':''}${E(verdict)}</div>
-   <details class="temporal-more"><summary>تفاصيل الحساب</summary><p class="mini">${f.totalCases} نوبة لديها بيانات ${E(f.title)} في الـ24 ساعة السابقة لها. للمقارنة المستقبلية: ${f.sampleOutcomePositive} فترات تبعتها ${E(target)}، و${f.sampleOutcomeNegative} فترات لم تبدأ فيها الحالة المختارة. ${E(f.note)}.</p></details>
-  </details>`;
- }).join('');
- return `<div class="panel"><div class="temporal-heading"><span class="temporal-step">٢</span><div><h3>هل تبعت النوبات هذا الروتين؟</h3><p class="mini">من منظور الروتين: نقيس كل 24 ساعة من الظهر للظهر، ثم نراقب بداية ${E(target)} في الـ24 ساعة التالية.</p></div></div>
- <p class="mini">الرقمان تحت كل عامل مربوطان بنفس الطريقة: <strong>نسبة فترات الروتين التي تبعتها نوبة</strong>. الأحمر يظهر فقط إذا كان الفرق 20 نقطة على الأقل ومعنا 5 فترات في كل جانب، و5 فترات بأعراض و5 بدونها.</p>
- ${list||'<div class="empty">ما فيه فترات روتين موثقة صالحة للمقارنة الزمنية الآن؛ يحتاج التطبيق متابعة يومية أكثر. البيانات القديمة ما انحذفت.</div>'}<p class="mini">الفترات ثابتة ولا تُختار لأن صداعًا حدث فيها. نستبعد الروتين المتأثر بنوبة سابقة، والأوقات التقديرية أو غير المكتملة؛ وغياب تسجيل القهوة لا يعني عدم شربها. فلاتر الأعراض تغيّر النتيجة، لا التسجيلات الأصلية. النسب ليست احتمالات طبية مؤكدة.</p></div>`;
+ const symptomLabel=model.mode==='all_symptoms'?'أعراض رأس':'صداع/شقيقة';
+ const noTargetLabel=model.mode==='all_symptoms'?'بلا أعراض رأس':'بلا صداع/شقيقة مسجّلة';
+ const heavyContext=model.mode==='headache_only'?'في فلتر «الصداع والشقيقة فقط»، أيام الثقل وحده تُحسب ضمن الأيام التي لم يُسجّل فيها صداع أو شقيقة، وليست بالضرورة خالية من أعراض الرأس.':'';
+ return `<div class="panel"><h3>هل ${model.mode==='all_symptoms'?'أعراض الرأس':'الصداع والشقيقة'} أكثر مع هذا الروتين؟</h3><p class="mini">عدد الأيام المسجلة لكل مجموعة ثابت عند تبديل الفلتر. نسبة الصداع تعتمد فقط على الأيام ذات الحالة المعروفة. في وضع «الصداع والشقيقة» تُستبعد أيام «غير محدد» من النسبة، ولا تُعامل كأيام سليمة.</p>${model.result.map(f=>{
+  const p=f.preferred,[g0,g1]=f.counts;
+  const one=(g,i)=>{
+   const tot=f.groupTotals[i];
+   return `<div class="compare-half"><span>${E(f.groups[i])}</span><div class="factor-total"><b>${tot.n}</b> أيام مسجلة لهذا الروتين <span>· ثابتة عند تغيير نوع الأعراض</span></div><strong>${g.rate===null?'—':g.rate+'%'}</strong><div class="compare-track"><span style="width:${g.rate||0}%"></span></div><small>${g.head} يوم ${E(symptomLabel)} من ${g.n} يوم صالح للمقارنة${g.n>0&&g.n<5?' · عينة صغيرة':''}${g.n===0?' · لا تتوفر أيام صالحة':''}</small>${tot.unassessed?`<small>${tot.unassessed} يوم خارج حساب النسبة: حالة غير محسومة أو مذكرات انتقائية</small>`:''}</div>`;
+  };
+  const strongest=f.hints.find(x=>x.qualified);
+  const enough=f.sample.head>=5&&f.sample.clear>=5&&g0.n>=5&&g1.n>=5;
+  let verdict='لا يمكن الحكم بعد؛ المقارنة تحتاج أيامًا أكثر مع الأعراض المختارة وبدونها في كل مجموعة.';
+  if(enough&&strongest)verdict=`الأعراض المختارة أكثر مع «${strongest.title}»؛ فرق المعدل ${Math.round(strongest.rateDifference)} نقطة مئوية. ارتباط يستحق المتابعة، وليس سببًا مثبتًا.`;
+  else if(enough&&g0.rate!==null&&g1.rate!==null&&Math.abs(g0.rate-g1.rate)<10)verdict='الروتين موجود في أيام الأعراض المختارة والأيام الأخرى، ولا يظهر فرق واضح في معدّلها.';
+  else if(enough)verdict='توجد فروق، لكنها غير كافية لوصف العامل بأنه مرتبط بالأعراض بوضوح.';
+  const retrospective=f.excludedStatus?' · استُبعدت '+f.excludedStatus+' من أيام المذكرات الانتقائية القديمة من حساب المعدل':'';
+  const unverified=(f.id==='breakfast'||f.id==='coffeeTime')&&f.unknownOnset?' · '+f.unknownOnset+' أيام أعراض بوقت بداية صداع غير مؤكد: تحليل تزامن يومي فقط':'';
+  const timingAudit=f.timingDetails?.length?`<details class="timing-audit"><summary>تفاصيل الأيام: لماذا احتُسب كل يوم أو استُبعد؟</summary><div class="timing-audit-list">${f.timingDetails.map(x=>`<div><b dir="ltr">${E(x.day)}</b> — ${E(x.reason)}</div>`).join('')}</div></details>`:'';
+  return `<details class="routine-item" ${f.id==='sleep'?'open':''}><summary>${E(f.title)} <small>${f.available} يوم فيه بيانات · ثابت</small></summary>${p.headTotal?`<div class="routine-frequency"><strong>${p.pct}%</strong><div><b>${E(p.title)}</b><small>في ${p.count} من ${p.headTotal} يوم ${E(symptomLabel)} معروفة بيانات هذا العامل</small></div></div>`:'<p class="mini">لا توجد أيام أعراض مختارة ذات بيانات لهذا العامل.</p>'}<div class="compare-grid">${one(g0,0)}${one(g1,1)}</div><div class="routine-conclusion">${E(verdict)}</div><p class="mini">${E(f.note)} · ${f.known} يوم صالح للمقارنة (${f.sample.head} مع ${E(symptomLabel)}، و${f.sample.clear} ${E(noTargetLabel)})${f.unknownOutcome?' · '+f.unknownOutcome+' أيام مسجلة حالتها غير محسومة':''}${E(retrospective)}${E(unverified)}</p>${timingAudit}</details>`;
+ }).join('')}<p class="mini">${E(heavyContext)} مذكرات 2024 الانتقائية لا تُستخدم لتقدير معدل الأعراض. غياب تسجيل القهوة لا يعني عدم شربها، ولا تُستخدم الأوقات التقريبية في مقارنة التوقيت. إذا لم يُعرف وقت بداية الصداع فالعلاقة تزامن في اليوم نفسه فقط، وليس دليلًا على السبب.</p></div>`;
 }
 function analyticsSettingsHtml(){const c=analysisConfig();return `<details class="panel analytic-settings"><summary>تعديل حدود المقارنة (اختياري)</summary><div class="form-grid">${[['sleepHours','النوم (ساعة)',c.sleepHours,4,12],['waterMl','الماء (مل)',c.waterMl,200,5000],['timingMinutes','بعد الاستيقاظ (دقيقة)',c.timingMinutes,15,240],['routineDeviation','تغيّر الروتين (دقيقة)',c.routineDeviation,30,240],['wakeTolerance','تغيّر الاستيقاظ (دقيقة)',c.wakeTolerance,15,180]].map(([key,title,val,min,max])=>`<label class="field"><span>${title}</span><input type="number" data-analytic-config="${key}" min="${min}" max="${max}" step="${key==='waterMl'?100:5}" value="${val}"></label>`).join('')}</div><p class="mini">تُطبّق التغييرات مباشرة بعد مغادرة الخانة، ولا تغيّر السجلات الأصلية.</p></details>`}
 function renderAnalytics(){
  const a=getAnalytics(),model=comparisonModel(a),clearDays=a.days.filter(d=>['confirmed_clear','inferred_clear'].includes(dayHeadStatus(d))).length;
- const symptomOnly=a.daily.filter(x=>x.kind==='heavy'||x.kind==='unknown').length;
+ const symptomOnly=model.rows.filter(x=>x.kind==='symptoms_only').length;
  const avgWater=a.waterDays.length?Math.round(a.waterDays.reduce((s,x)=>s+x.sum,0)/a.waterDays.length):null;
  const sleepAvg=a.sleep.length?fmtDuration(Math.round(a.sleep.reduce((n,s)=>n+duration(s.duration),0)/a.sleep.length)):null;
- return `<div class="view-title"><div><h1>التحليل</h1><span class="sub">راقب ما سبق النوبات وقارن الروتينات بأمان</span></div></div>
+ return `<div class="view-title"><div><h1>التحليل</h1><span class="sub">اعرف الروتينات المرتبطة بالصداع بسرعة</span></div></div>
  <div class="segmented">${[[7,'7 أيام'],[30,'30 يوم'],[90,'90 يوم'],['year-2026','2026'],['year-2024','2024'],['all','الكل']].map(([n,v])=>`<button data-period="${n}" class="${app.period===n?'active':''}">${v}</button>`).join('')}</div><div class="analysis-scope"><span>احتساب الأعراض في المقارنات</span><div class="segmented">${[['all_symptoms','كل أعراض الرأس'],['headache_only','الصداع والشقيقة فقط']].map(([k,v])=>`<button data-analysis-mode="${k}" class="${app.analysisMode===k?'active':''}">${v}</button>`).join('')}</div></div>
  <div class="card-grid" style="margin-top:14px"><div class="metric"><span>أيام الصداع والشقيقة</span><b>${a.headacheDays.size}</b></div><div class="metric"><span>أيام بدون صداع (مؤكد/تلقائي)</span><b>${clearDays}</b></div><div class="metric"><span>أيام أعراض الرأس (بما فيها الثقل)</span><b>${a.symptomDays.size}</b></div><div class="metric"><span>أيام استخدام دواء</span><b>${a.medDays.size}</b></div></div>
  ${keyInsightsHtml(model)}${comparisonHtml(model)}
@@ -427,7 +362,7 @@ function renderAnalytics(){
  ${analyticsSettingsHtml()}
  <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">اليوم المنتهي الذي تسجّل فيه روتينًا دون أعراض رأس يُصنّف تلقائيًا يومًا بلا صداع؛ الأيام بلا تسجيل لا تُعد أيامًا سليمة. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>استجابة أدوية النوبات</h3>${medicationSummary(a)}<h3 style="margin-top:18px">العلاج الوقائي</h3>${preventiveSummary(a)}<div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.7</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.8 (تحليل مستقر)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 function render(){const target=app.tab;view.innerHTML=target==='today'?renderToday():target==='history'?renderHistory():target==='analytics'?renderAnalytics():renderSettings();document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===target));if(target==='analytics'){const chart=view.querySelector('.severity-scroll');if(chart)chart.scrollLeft=chart.scrollWidth}}
 // --- Input and screenshot workflow ---
 function textNumbers(s){return s.replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)))}
