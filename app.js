@@ -140,6 +140,61 @@ function chartSvg(daily){
  const chips=found.length?`<div class="severity-jump"><span>أيام الصداع والشقيقة (${found.length}):</span>${found.map(row=>{const d=row.day.split('-');return `<button type="button" data-chart-jump="${row.day}" class="severity-jump-date kind-${row.kind}" aria-label="اذهب إلى ${kindLabels[row.kind]} يوم ${Number(d[2])}/${Number(d[1])}">${Number(d[2])}/${Number(d[1])}</button>`}).join('')}</div>`:'<p class="mini">ما فيه أيام صداع أو شقيقة مصنفة ضمن الفترة المختارة.</p>';
  return `${legend}<div class="severity-layout"><div class="severity-y">${labels}</div><div class="severity-scroll" dir="ltr"><div class="severity-plot" style="--days:${visible.length}">${dayBars}</div></div></div>${chips}<p class="mini">لون العمود يوضح نوع الحالة المسجلة في ذلك اليوم، وارتفاعه يوضح أعلى شدة من كل القراءات. إذا سُجلت شقيقة وصداع في اليوم نفسه يظهر بلون الشقيقة ويُحسب اليوم مرة واحدة. اضغط التاريخ أو العمود للتفاصيل.</p>`;
 }
+// User-defined symptom diary convention: 24h after the dose, no logged
+// improvement = "no response recorded" (not a clinical determination).
+const MED_WINDOW=24*60*60*1000;
+function normalizedDrugName(x){return String(x||'دواء غير محدد').trim().replace(/\s+/g,' ').toLocaleLowerCase();}
+function medicationResponseRows(a,atTime=Date.now()){
+ const doses=[...a.r.filter(r=>r.type==='med')].sort((a,b)=>new Date(a.at)-new Date(b.at));
+ const headaches=app.records.filter(r=>r.type==='headache'&&Number.isFinite(Number(r.severity)))
+   .sort((a,b)=>new Date(a.at)-new Date(b.at));
+ return doses.map(m=>{
+  const doseTime=new Date(m.at).getTime(),validTime=Number.isFinite(doseTime);
+  const next=doses.find(other=>other!==m&&new Date(other.at)>doseTime&&(m.episodeId&&other.episodeId===m.episodeId));
+  const end=Math.min(doseTime+MED_WINDOW,next?new Date(next.at).getTime():Infinity);
+  const related=h=>m.episodeId?Boolean(h.episodeId&&h.episodeId===m.episodeId):
+    Boolean(!h.episodeId&&Math.abs(new Date(h.at).getTime()-doseTime)<=MED_WINDOW);
+  const before=headaches.filter(h=>related(h)&&new Date(h.at).getTime()<=doseTime&&new Date(h.at).getTime()>=doseTime-MED_WINDOW);
+  const baseline=before.length?Number(before[before.length-1].severity):null;
+  const after=headaches.filter(h=>related(h)&&new Date(h.at).getTime()>doseTime&&new Date(h.at).getTime()<=end);
+  const fully=after.find(h=>Number(h.severity)===0);
+  // Explicitly documented partial relief in a medication note counts as a
+  // recorded improvement even when the old diary lacks numeric follow-up.
+  // Avoid vague phrases and explicit negation to limit false positives.
+  const medNotes=String(m.notes||'');
+  const documentedRelief=/(?:تحسن(?:اً)? مؤقت(?:اً)?|التحسن كان مؤقت|تحسن جزئي|خف(?:ّ)? (?:الصداع|الألم) بعد)/.test(medNotes)&&!/(?:لم يتحسن|لم يخف|ما تحسن|بدون تحسن|لم يكن فعال)/.test(medNotes);
+  const partially=documentedRelief||(baseline!==null&&baseline>0&&after.some(h=>Number(h.severity)>0&&Number(h.severity)<baseline));
+  let outcome=null,minutes=null;
+  if(validTime&&doseTime+MED_WINDOW<=atTime){
+   outcome=fully?'full':partially?'partial':'none';
+   if(fully)minutes=Math.round((new Date(fully.at).getTime()-doseTime)/60000);
+  }
+  return {m,outcome,minutes,baseline,after:after.length};
+ });
+}
+function medicationResponseHtml(a){
+ const all=medicationResponseRows(a);
+ if(!all.length)return `<div class="panel medicine-panel"><h3>✚ الاستجابة لأدوية الصداع</h3><p class="mini">ما فيه جرعات مسجلة في هذه الفترة.</p></div>`;
+ const map=new Map();
+ for(const row of all){const key=normalizedDrugName(row.m.name);if(!map.has(key))map.set(key,{name:row.m.name||'دواء غير محدد',rows:[]});map.get(key).rows.push(row);}
+ const groups=[...map.values()].sort((a,b)=>b.rows.length-a.rows.length);
+ const legend='<div class="med-legend"><span><i class="med-dot med-full"></i>اختفاء كامل</span><span><i class="med-dot med-partial"></i>تحسن جزئي</span><span><i class="med-dot med-none"></i>بدون استجابة مسجّلة</span></div>';
+ const cards=groups.map(g=>{
+  const eligible=g.rows.filter(r=>r.outcome),pending=g.rows.length-eligible.length;
+  const counts={full:eligible.filter(r=>r.outcome==='full').length,partial:eligible.filter(r=>r.outcome==='partial').length,none:eligible.filter(r=>r.outcome==='none').length};
+  const n=eligible.length,pct=n?Math.round(100*counts.full/n):null;
+  const times=eligible.filter(r=>r.outcome==='full'&&r.minutes!==null).map(r=>r.minutes);
+  const avg=times.length?fmtDuration(Math.round(times.reduce((x,y)=>x+y,0)/times.length)):'—';
+  const bar=n?`<div class="med-stacked-chart" role="img" aria-label="${E(g.name)}: ${counts.full} اختفاء كامل، ${counts.partial} تحسن جزئي، ${counts.none} بدون استجابة مسجلة">${[['full','med-full'],['partial','med-partial'],['none','med-none']].map(([key,cls])=>counts[key]?`<span class="${cls}" style="width:${counts[key]*100/n}%" title="${key}: ${counts[key]}"></span>`:'').join('')}</div>`:'<div class="med-stacked-empty">لا توجد جرعة مضى عليها 24 ساعة</div>';
+  const entries=g.rows.slice().reverse().map(r=>{
+    const category=r.outcome==='full'?'اختفاء كامل':r.outcome==='partial'?'تحسن جزئي':r.outcome==='none'?'بدون استجابة مسجّلة':'بانتظار مرور 24 ساعة';
+    const className=r.outcome?`med-text-${r.outcome}`:'med-pending';
+    return `<div class="med-dose-entry"><span>${E(fmtShort(recordDate(r.m)))} · ${E(fmtTime(r.m.at))}</span><b class="${className}">${category}${r.minutes!==null?' · '+E(fmtDuration(r.minutes)):''}</b></div>`;
+   }).join('');
+  return `<div class="medicine-row"><div class="med-head"><strong>${E(g.name)}</strong><small>${n} جرعات قابلة للتقييم${pending?' · '+pending+' جرعة حديثة':''}</small></div>${bar}<div class="med-stat-grid"><span class="med-text-full">${counts.full} اختفاء كامل</span><span class="med-text-partial">${counts.partial} جزئي</span><span class="med-text-none">${counts.none} بدون استجابة</span></div><p class="mini">الاختفاء الكامل: <b>${pct===null?'—':pct+'%'}</b> من الجرعات المكتملة · متوسط وقت الاختفاء: ${avg}</p><details class="med-dose-details"><summary>تفاصيل الجرعات</summary>${entries}</details></div>`;
+ }).join('');
+ return `<div class="panel medicine-panel"><h3>✚ الاستجابة لأدوية الصداع</h3><p class="mini">الرسم يقارن كل دواء حسب تسجيلات الشدة بعد الجرعة. نعتمد الاختفاء الكامل 0%، أو انخفاضًا مسجّلًا في الشدة، أو تحسنًا جزئيًا موثّقًا في الملاحظات. إذا مرّت 24 ساعة ولم تُسجّل استجابة، تُصنّف «بدون استجابة مسجّلة» حسب طريقتك، وليس كدليل طبي مؤكد. الجرعات الأحدث من 24 ساعة لا تدخل النسب بعد.</p>${legend}${cards}<p class="mini">التصنيف لا يثبت أن الدواء وحده تسبب في التحسن؛ النتيجة تعتمد على وقت الجرعة ودقة سجل الأعراض.</p></div>`;
+}
 function medicationSummary(a){const meds=sorted(a.r.filter(x=>x.type==='med'));if(!meds.length)return '<p class="info">لا توجد جرعات مسجلة ضمن الفترة.</p>';const names=[...new Set(meds.map(x=>x.name||'دواء غير محدد'))];return names.map(name=>{const group=meds.filter(x=>(x.name||'دواء غير محدد')===name),results=group.map(m=>{if(!m.episodeId)return null;const zero=sorted(app.records.filter(h=>h.type==='headache'&&h.episodeId===m.episodeId&&h.severity===0&&new Date(h.at)>=new Date(m.at)&&new Date(h.at)-new Date(m.at)<=86400000)).reverse()[0];return zero?Math.round((new Date(zero.at)-new Date(m.at))/60000):null}).filter(x=>x!==null),avg=results.length?fmtDuration(Math.round(results.reduce((n,x)=>n+x,0)/results.length)):null;return `<div class="kv"><div><strong>${E(name)}</strong><small style="display:block">${group.length} جرعات مسجلة · ${results.length} حالات وصلت إلى 0% بعد الجرعة</small></div><strong>${avg||'—'}</strong></div>`}).join('')+'<p class="mini">الوقت محسوب من الجرعة إلى أول قراءة صفر مسجلة، ولا يثبت سببية الدواء.</p>'}
 function preventiveSummary(a){const preventive=sorted(a.r.filter(x=>x.type==='botox'));if(!preventive.length)return '<p class="info">لم تُسجَّل جلسات وقائية في هذه الفترة. يمكنك إضافتها من صفحة «يومي».</p>';return preventive.slice(0,7).map(x=>`<div class="kv"><div><strong>${E(x.name||'علاج وقائي')}</strong><small style="display:block">${E(fmtShort(recordDate(x)))}</small></div><span class="mini">${E(x.dose||'جرعة غير مسجلة')}</span></div>`).join('')+'<p class="mini">مقارنة النتائج بين الدورات الوقائية تتطلب متابعة أيام كافية وبيانات مكتملة.</p>'}
 
@@ -290,6 +345,19 @@ function water24StatusForWindow(start,end,episodes){
  const observed=touched.every(d=>app.records.some(r=>recordDate(r)===d&&(['water','food','coffee','sleep','clear'].includes(r.type))));
  return observed?'clear':'unknown';
 }
+// Water comparison: a prior headache that was visibly resolved before the
+// observation anchor does not erase a real 24h hydration measurement.
+function water24BaselineReady(start,end){
+ const first=localDate(new Date(start)),last=localDate(new Date(end-1));
+ const touched=[...new Set([first,last])];
+ // Demand diary coverage in both calendar portions; no recording is not zero.
+ if(!touched.every(d=>app.records.some(r=>recordDate(r)===d&&['water','food','coffee','sleep','clear'].includes(r.type))))return false;
+ if(touched.some(d=>app.records.some(r=>recordDate(r)===d&&(r.source==='retrospective-2024-diary'||documentedHeadNote(r)))))return false;
+ const positive=app.records.filter(r=>r.type==='headache'&&Number(r.severity)>0&&new Date(r.at)>=start&&new Date(r.at)<end);
+ // Only reject an episode if its latest positive reading has no documented
+ // recovery before the anchor. Prior resolved episodes are fine.
+ return positive.every(h=>app.records.some(r=>r.type==='headache'&&Number(r.severity)===0&&r.episodeId===h.episodeId&&r.episodeId&&new Date(r.at)>new Date(h.at)&&new Date(r.at)<end));
+}
 function water24Model(a){
  const cfg=analysisConfig(),days=new Set(a.days);
  const episodes=water24Episodes();
@@ -301,28 +369,27 @@ function water24Model(a){
  // Fixed daily reference points, independent of the appearance of a headache:
  // water in the previous 24h (12:00-12:00), followed prospectively by a
  // 24h observation window. Restrict to completed follow-up intervals.
- const lower=[];
+ const lower=[],audits=[];
  for(const day of a.days){
   const anchor=new Date(day+'T12:00:00').getTime();
-  if(anchor+WATER_DAY>Date.now())continue;
   if(!Number.isFinite(anchor))continue;
+  if(anchor+WATER_DAY>Date.now()){audits.push({day,reason:'لم تكتمل 24 ساعة المتابعة'});continue;}
   const start=anchor-WATER_DAY,finish=anchor+WATER_DAY;
   const water=water24Events(start,anchor);
-  if(water.status!=='measured')continue;
-  if(water24StatusForWindow(start,anchor,episodes)!=='clear')continue;
+  if(water.status!=='measured'){audits.push({day,reason:'لا يوجد ماء مسجّل في فترة القياس'});continue;}
+  if(!water24BaselineReady(start,anchor)){audits.push({day,reason:'بيانات الروتين غير مكتملة أو أعراض سابقة لم يُسجّل انتهاؤها'});continue;}
   // If an episode began before the observation window but an active reading
   // remains, don't count that continuation as a new onset or as a control.
   const futureReadings=app.records.filter(r=>r.type==='headache'&&Number(r.severity)>0&&new Date(r.at)>=anchor&&new Date(r.at)<finish);
   const futureStarts=episodes.filter(ep=>ep.ms>=anchor&&ep.ms<finish);
   const otherSymptoms=futureReadings.some(r=>r.kind==='unknown'||(app.analysisMode==='all_symptoms'?false:r.kind==='heavy'));
-  const historicalUnknown=futureReadings.some(r=>!accurateAt(r));
   const target=futureStarts.some(ep=>ep.target&&ep.valid);
   const anyNonTarget=futureReadings.length&&!target;
   let outcome=null;
-  if(historicalUnknown||otherSymptoms||anyNonTarget)outcome=null;
+  if(otherSymptoms||anyNonTarget)outcome=null;
   else if(target)outcome=1;
   else if(water24StatusForWindow(anchor,finish,episodes)==='clear')outcome=0;
-  if(outcome===null)continue;
+  if(outcome===null){audits.push({day,reason:'حالة الأعراض التالية غير مؤكدة'});continue;}
   lower.push({day,water:water.water,low:water.water<cfg.waterMl,outcome});
  }
  const grouped=[lower.filter(x=>x.low),lower.filter(x=>!x.low)].map(rows=>({n:rows.length,head:rows.filter(x=>x.outcome===1).length,rate:rows.length?Math.round(100*rows.filter(x=>x.outcome===1).length/rows.length):null}));
@@ -331,7 +398,7 @@ function water24Model(a){
  const enough=low.n>=5&&high.n>=5&&cases>=5&&controls>=5;
  const difference=low.rate!==null&&high.rate!==null?low.rate-high.rate:null;
  const riskIndex=enough&&difference!==null&&Math.abs(difference)>=20?(difference>0?0:1):-1;
- return {upper,upperMeasured,upperLow,upperHigh,grouped,lower,enough,riskIndex,threshold:cfg.waterMl,excluded:upper.length-upperMeasured.length};
+ return {upper,upperMeasured,upperLow,upperHigh,grouped,lower,audits,enough,riskIndex,threshold:cfg.waterMl,excluded:upper.length-upperMeasured.length};
 }
 function water24UpperHtml(w){
  const measured=w.upperMeasured.length,pct=measured?Math.round(100*w.upperLow/measured):null;
@@ -353,7 +420,9 @@ function water24LowerHtml(w){
  let desc='البيانات غير كافية للحكم؛ لن نبرز أي نسبة بالأحمر.';
  if(w.riskIndex!==-1)desc=`معدل الأعراض أعلى بعد «${w.riskIndex===0?'الماء الأقل':'الماء الأكثر'}» بفارق ${Math.abs(low.rate-high.rate)} نقطة مئوية، ويستحق المتابعة دون إثبات سبب.`;
  else if(w.enough)desc='المقارنة متاحة، لكن لا يظهر فرق كبير بما يكفي لتمييز عامل محدد.';
- return `<details class="routine-item water24-lower" open><summary>الماء — قبل النوبات بـ24 ساعة <small>${w.lower.length} فترات صالحة</small></summary><p class="mini">من منظور الروتين: نسجل ماء الـ24 ساعة المنتهية عند 12 ظهرًا، ثم نتابع ظهور نوبة جديدة خلال الـ24 ساعة التالية. الفترات بدون ماء مسجّل أو متابعة كافية تُستبعد. ويُعتمد وقت كل تسجيل ماء حتى لو كان تقديريًا.</p><div class="compare-grid">${half(low,0)}${half(high,1)}</div><div class="routine-conclusion">${E(desc)}</div><p class="mini">فترات اليوم الواحد قد تتداخل مع فترات مجاورة؛ النسب استكشافية. الماء المسجّل ليس بالضرورة كامل ما شربته، ولا يُعتبر غياب تسجيل ماء شربًا بصفر مل.</p></details>`;
+ const auditRows=[...w.lower.map(r=>({day:r.day,reason:`احتُسبت: ${r.water} مل، ${r.outcome?'تبعتها نوبة':'لم تتبعها نوبة'}`})),...(w.audits||[])].sort((a,b)=>b.day.localeCompare(a.day));
+ const audit=`<details class="timing-audit"><summary>لماذا احتُسبت أو استُبعدت كل فترة؟</summary><div class="timing-audit-list">${auditRows.map(r=>`<div><b dir="ltr">${E(r.day)}</b> — ${E(r.reason)}</div>`).join('')}</div></details>`;
+ return `<details class="routine-item water24-lower" open><summary>الماء — قبل النوبات بـ24 ساعة <small>${w.lower.length} فترات صالحة</small></summary><p class="mini">من منظور الروتين: نسجل ماء الـ24 ساعة المنتهية عند 12 ظهرًا، ثم نتابع ظهور نوبة جديدة خلال الـ24 ساعة التالية. الفترات بدون ماء مسجّل أو متابعة كافية تُستبعد. ويُعتمد وقت كل تسجيل ماء حتى لو كان تقديريًا.</p><div class="compare-grid">${half(low,0)}${half(high,1)}</div><div class="routine-conclusion">${E(desc)}</div><p class="mini">الساعات التقديرية معتمدة حسب اختيارك. الصداع السابق الذي انتهى قبل نافذة المتابعة لا يلغي فترة الماء. لا تُعتبر الأيام الخالية من التسجيلات خالية من الصداع تلقائيًا. الماء المسجّل قد لا يمثّل كل ما شربته.</p>${audit}</details>`;
 }
 
 function comparisonModel(a){
@@ -471,10 +540,11 @@ function renderAnalytics(){
  <div class="card-grid" style="margin-top:14px"><div class="metric"><span>أيام الصداع والشقيقة</span><b>${a.headacheDays.size}</b></div><div class="metric"><span>أيام بدون صداع (مؤكد/تلقائي)</span><b>${clearDays}</b></div><div class="metric"><span>أيام أعراض الرأس (بما فيها الثقل)</span><b>${a.symptomDays.size}</b></div><div class="metric"><span>أيام استخدام دواء</span><b>${a.medDays.size}</b></div></div>
  ${keyInsightsHtml(model)}${water24UpperHtml(water24)}${comparisonHtml(model,water24)}
  <div class="panel"><div class="severity-heading"><h3>أعلى شدة مسجلة يوميًا</h3><span class="mini">مقياس من 0 إلى 100%</span></div>${chartSvg(a.daily)}<p class="mini">النقطة = يوم صداع وصفي بلا نسبة. العلامة (—) = لا توجد قراءة. عند اختيار سنة أو «الكل» تظهر الأيام ذات التسجيل فقط.</p></div>
+ ${medicationResponseHtml(a)}
  ${analyticsSettingsHtml()}
- <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">اليوم المنتهي الذي تسجّل فيه روتينًا دون أعراض رأس يُصنّف تلقائيًا يومًا بلا صداع؛ الأيام بلا تسجيل لا تُعد أيامًا سليمة. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>استجابة أدوية النوبات</h3>${medicationSummary(a)}<h3 style="margin-top:18px">العلاج الوقائي</h3>${preventiveSummary(a)}<div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
+ <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">اليوم المنتهي الذي تسجّل فيه روتينًا دون أعراض رأس يُصنّف تلقائيًا يومًا بلا صداع؛ الأيام بلا تسجيل لا تُعد أيامًا سليمة. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>الاستجابة للأدوية</h3><p class="mini">الرسم البياني والتفاصيل ظاهرة فوق هذا القسم.</p><h3 style="margin-top:18px">العلاج الوقائي</h3>${preventiveSummary(a)}<div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.10 (موية 24 ساعة بالأوقات المعتمدة + تنبيه الألوان)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.12 (تصحيح مقارنة الماء + الاستجابة للدواء)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 function render(){const target=app.tab;view.innerHTML=target==='today'?renderToday():target==='history'?renderHistory():target==='analytics'?renderAnalytics():renderSettings();document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===target));if(target==='analytics'){const chart=view.querySelector('.severity-scroll');if(chart)chart.scrollLeft=chart.scrollWidth}}
 // --- Input and screenshot workflow ---
 function textNumbers(s){return s.replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)))}
@@ -534,7 +604,7 @@ function showSleepReview(fields={},raw='',blob=null,confidence=null,parsed=null)
  const evidence=parsed?.evidence||{},warnings=parsed?.warnings||[];
  const extracted=Object.values(f).filter(Boolean).length;
  const badges=Object.entries(f).filter(([,value])=>value).map(([key,value])=>`<div class="mini" style="padding:4px 0"><strong>${E(names[key])}: ${E(value)}</strong> — ${E(evidence[key]||'راجع القيمة')}</div>`).join('');
- const html=`<div class="${extracted?'info':'warning'}">${extracted?`استخرجنا ${extracted} بيانات. راجعها قبل الحفظ.`:'تعذر قراءة قيم مؤكدة؛ أكملها يدويًا.'}</div>${badges?`<details style="margin:10px 0"><summary class="mini">مصدر كل قيمة</summary>${badges}</details>`:''}${warnings.map(w=>`<p class="warning">${E(w)}</p>`).join('')}<form id="ocr-form">
+ const html=`<div class="${extracted>=2?'info':'warning'}">${extracted>=2?`استخرجنا ${extracted} بيانات. راجعها قبل الحفظ.`:extracted===1?'تعرفنا على التاريخ فقط؛ أوقات النوم لم تُستخرج. يمكنك إكمالها يدويًا، وفتح «النص المقروء للمراجعة» لمعرفة أين تعثرت القراءة.':'تعذر قراءة قيم مؤكدة؛ أكملها يدويًا.'}</div>${badges?`<details style="margin:10px 0"><summary class="mini">مصدر كل قيمة</summary>${badges}</details>`:''}${warnings.map(w=>`<p class="warning">${E(w)}</p>`).join('')}<form id="ocr-form">
  ${formField('تاريخ الاستيقاظ','sleepDate','date',f.sleepDate,'required')}
  ${formField('النوم الفعلي من أعلى الصورة (س:د)','duration','text',f.duration,'placeholder="مثال 08:08"')}
  ${formField('بداية النوم الرئيسي','bedtime','time',clockInput(f.bedtime))}

@@ -85,3 +85,19 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .water24-episode-row:last-child{border-bottom:0}
 .water24-episode-row b{margin-inline-start:auto;white-space:nowrap}
 .water24-episode-row small{width:100%;color:var(--muted, #6a7b86)}
+
+/* v1.8.12 medication response: three-category, high-contrast, mobile-friendly */
+.medicine-panel .med-legend{display:flex;flex-wrap:wrap;gap:8px 13px;font-size:11px;margin:12px 0;color:var(--ink)}
+.med-dot{width:11px;height:11px;border-radius:4px;display:inline-block;vertical-align:middle;margin-inline-end:4px}
+.med-full{background:#218468}.med-partial{background:#c08a19}.med-none{background:#bd4a4a}
+.medicine-row{padding:14px 0;border-top:1px solid var(--line)}
+.medicine-row:first-of-type{border-top:0}
+.med-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.med-head strong{font-size:14px}.med-head small{font-size:11px;color:var(--muted)}
+.med-stacked-chart{display:flex;direction:ltr;width:100%;height:24px;border-radius:9px;overflow:hidden;background:var(--surface2);margin-top:11px;gap:2px}
+.med-stacked-chart>span{height:100%;min-width:2px}.med-stacked-empty{background:var(--surface2);font-size:11px;color:var(--muted);border-radius:9px;padding:11px;margin-top:11px}
+.med-stat-grid{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;font-size:11px;font-weight:650;margin:9px 0}
+.med-text-full{color:#218468}.med-text-partial{color:#b58110}.med-text-none{color:#bd4a4a}.med-pending{color:var(--muted)}
+.med-dose-details{margin-top:10px}.med-dose-details summary{font-size:12px;cursor:pointer;color:var(--ink);font-weight:600}
+.med-dose-entry{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11px;line-height:1.5}
+.med-dose-entry:last-child{border:0}.med-dose-entry>b{text-align:left}
