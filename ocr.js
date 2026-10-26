@@ -117,39 +117,127 @@ function axisLine(textLines){
  const eligible=(textLines||[]).map(l=>({line:l.text,count:([...(String(l.text).matchAll(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g))]).length})).filter(x=>x.count>=3&&x.count<=5).sort((a,b)=>b.count-a.count);
  return eligible[0]?.line||'';
 }
+// RingConn OCR 1.8.11. Treat the four relevant regions independently.
+// iPhone screenshots use light gray text against nearly black backgrounds.
+// Making white OCR paper with dark glyphs improves recognition on that theme.
+function legibleCrop(bitmap,rect,scale=2){
+ const c=cropScaled(bitmap,rect,scale),ctx=c.getContext('2d',{willReadFrequently:true});
+ const image=ctx.getImageData(0,0,c.width,c.height),a=image.data;
+ let light=0,dark=0;
+ for(let i=0;i<a.length;i+=4){const v=(a[i]*.21+a[i+1]*.72+a[i+2]*.07);if(v>160)light++;if(v<65)dark++}
+ if(dark>light*.9){
+  // Most RingConn screenshots are dark mode. Exclude red ink/highlights by
+  // considering the green/blue channels rather than red brightness alone.
+  for(let i=0;i<a.length;i+=4){
+   const l=.25*a[i]+.5*a[i+1]+.25*a[i+2];
+   const ink=Math.max(0,Math.min(255,(l-88)*3.0));
+   a[i]=a[i+1]=a[i+2]=255-ink;a[i+3]=255;
+  }
+  ctx.putImageData(image,0,0);
+ }
+ return c;
+}
+function singleAxisClock(text){
+ const clocks=[...new Set([...normalize(text).matchAll(/\b(?:[01]?\d|2[0-3])\s*:\s*[0-5]\d\b/g)].map(m=>m[0].replace(/\s/g,'').padStart(5,'0')))];
+ return clocks.length===1?clocks[0]:'';
+}
+async function readRegion(worker,bitmap,rect,scale,better=true){
+ const canvas=better?legibleCrop(bitmap,rect,scale):cropScaled(bitmap,rect,scale);
+ return recognizeCanvas(worker,canvas);
+}
+// OCR fallback for a narrow, *single* row of Total Time Asleep.
+// Alternate RingConn layouts move the main number vertically when Nap is shown.
+// PSM 13 is single raw-line OCR, unlike the standard block-text mode.
+async function readTightDurationRow(w,bitmap,rect){
+ const crop=cropScaled(bitmap,rect,3);
+ try{
+  await w.setParameters({tessedit_pageseg_mode:'13'});
+  return await recognizeCanvas(w,crop);
+ }finally{
+  await w.setParameters({tessedit_pageseg_mode:'6'});
+ }
+}
+function cautiouslyNormalizeDurationOCR(s){
+ // On some dark-mode screenshots OCR reads a bold 8 as the letter B.
+ // This is only attempted for an isolated number row, never for arbitrary text.
+ const t=normalize(s).replace(/\bB(?=\s*h(?:r|ours?)\b)/gi,'8')
+   .replace(/(?<=\bh(?:r|ours?)\s*)B(?=\s*m(?:in)?\b)/gi,'8');
+ const match=t.match(/\b(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})\s*(?:m|min|mins|minutes?)\b/i);
+ if(!match||+match[1]<1||+match[1]>16||+match[2]>=60)return '';
+ return minutesToHHMM(+match[1]*60 + +match[2]);
+}
+// Read two narrow axis bands. Sleep Details appears higher when Nap is absent;
+// selecting both clocks from the SAME band prevents unrelated clocks matching.
+async function readAxisBand(w,bitmap,y){
+ const l=await readRegion(w,bitmap,[.030,y,.240,.058],1.9,true);
+ const r=await readRegion(w,bitmap,[.745,y,.240,.058],1.9,true);
+ let left=singleAxisClock(l.text),right=singleAxisClock(r.text);
+ if(!left||!right){
+  const ll=!left?await readRegion(w,bitmap,[.030,y,.240,.058],1.55,false):l;
+  const rr=!right?await readRegion(w,bitmap,[.745,y,.240,.058],1.55,false):r;
+  left=left||singleAxisClock(ll.text);right=right||singleAxisClock(rr.text);
+ }
+ if(left&&right){
+  const elapsed=(toMinutes(right)-toMinutes(left)+1440)%1440;
+  if(elapsed>=90&&elapsed<=900)return {start:left,end:right};
+ }
+ return null;
+}
 export async function recognizeLocal(file,onProgress=()=>{}){
  const w=await ensureWorker(onProgress);let bitmap;
  try{
   bitmap=await createImageBitmap(file);
-  const portrait=bitmap.height>bitmap.width*1.45;
-  if(!portrait){onProgress('قراءة الصورة…');const full=await recognizeCanvas(w,file);return {...full,sections:{full:full.text}}}
-  onProgress('قراءة التاريخ المحدد وملخص النوم…');
-  const head=await recognizeCanvas(w,cropScaled(bitmap,[0,.073,1,.31],1.3));
-  // Center strip only: the adjacent days must not supply the sleep date.
-  const selected=await recognizeCanvas(w,cropScaled(bitmap,[.345,.076,.31,.083],2.1));
-  onProgress('قراءة محور أوقات النوم…');
-  const graph=await recognizeCanvas(w,cropScaled(bitmap,[.025,.31,.95,.235],1.4));
-  onProgress('تحديد مواقع أسماء مراحل النوم…');
-  const rectY=.525,rectH=.42;
-  const labels=await recognizeCanvas(w,cropScaled(bitmap,[.015,rectY,.53,rectH],1.8));
-  onProgress('قراءة مدد المراحل من العمود المقابل…');
-  const values=await recognizeCanvas(w,cropScaled(bitmap,[.775,rectY,.225,rectH],1.8));
-  const dynamic=pairStageRows(labels.lines,values.lines,Math.round(bitmap.height*rectH*1.8));
-  if(!labels.lines.length&&!values.lines.length){dynamic.rows=pairStageText(labels.text,values.text);if(Object.keys(dynamic.rows).length)dynamic.issues=[];}
-  // Line-by-line text is a secondary fallback ONLY when stage geometry
-  // is unavailable. If a label is missing, never assign the next stage's time.
-  const allStageText=labels.text+'\n'+values.text;
-  const combined=[head.text,selected.text,allStageText].filter(Boolean).join('\n');
-  const axis=axisLine(graph.lines);
-  return {text:combined,confidence:Math.round((head.confidence+labels.confidence+values.confidence)/3),sections:{
-   header:head.text,selectedDate:selected.text,axis,stages:allStageText,
-   stageRows:dynamic.rows,anchoredStages:true,stageWarnings:dynamic.issues,
-   labelsText:labels.text,valuesText:values.text,
-   // In nap-layout screenshots, the tab shows 'Nap HH:MM-HH:MM'.
-   napHeader:head.text
-  }};
+  if(bitmap.height<=bitmap.width*1.45){
+   onProgress('قراءة الصورة…');const full=await recognizeCanvas(w,file);
+   return {...full,sections:{full:full.text}};
+  }
+  onProgress('التعرف على تاريخ النوم…');
+  const selected=await readRegion(w,bitmap,[.30,.075,.40,.105],2.15,false);
+  onProgress('قراءة النوم الفعلي من أعلى الصورة…');
+  const headerRect=[.015,.19,.65,.275];
+  let header=await readRegion(w,bitmap,headerRect,1.8,true);
+  let duration=readSleepDuration(header.text);
+  if(!duration){
+   const fallback=await readRegion(w,bitmap,headerRect,1.6,false);
+   duration=readSleepDuration(fallback.text);
+   header={...header,text:header.text+'\n'+fallback.text};
+  }
+  let tightDuration='',durationWarning='';
+  if(!duration){
+   onProgress('تجربة قراءة الرقم مباشرةً…');
+   // The first layout has its duration at ~26% height, the other at ~34%.
+   for(const rect of [[.045,.255,.25,.035],[.045,.334,.25,.045]]){
+    const attempt=await readTightDurationRow(w,bitmap,rect);
+    tightDuration=cautiouslyNormalizeDurationOCR(attempt.text);
+    if(tightDuration){
+     durationWarning='قراءة مدة النوم من سطر الأرقام مع تصحيح محتمل لحرف B/8؛ تحقق منها قبل الحفظ.';
+     break;
+    }
+   }
+  }
+  onProgress('قراءة أوقات Sleep وNap…');
+  const tabsRect=[.015,.405,.97,.27];
+  let tabs=await readRegion(w,bitmap,tabsRect,1.8,true);
+  if(!matchSleepInterval(tabs.text)||!matchNapInterval(tabs.text)){
+   const other=await readRegion(w,bitmap,tabsRect,1.45,false);
+   tabs={...tabs,text:tabs.text+'\n'+other.text};
+  }
+  let axisStart='',axisEnd='';
+  if(!matchSleepInterval(tabs.text)){
+   onProgress('قراءة أول وآخر ساعة أسفل الرسم…');
+   // Two layouts: without Nap near 82%, with Nap near 89% of the image.
+   for(const y of [.805,.865]){
+    const band=await readAxisBand(w,bitmap,y);
+    if(band){axisStart=band.start;axisEnd=band.end;break;}
+   }
+  }
+  const sections={header:header.text,selectedDate:selected.text,tabs:tabs.text,
+   axisStart,axisEnd,tightDuration,durationWarning};
+  return {text:[selected.text,header.text,tabs.text,axisStart,axisEnd,tightDuration].join('\n'),
+   confidence:Math.round((header.confidence+tabs.confidence)/2),sections};
  }finally{bitmap?.close?.()}
 }
+
 const normalize=x=>String(x||'')
  .replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)))
  .replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)))
@@ -173,6 +261,34 @@ function durationValue(s){
  return '';
 }
 
+// Accept only the value belonging to Total Time Asleep, NOT Time In Bed,
+// Sleep Efficiency, the 8-hour goal, or the stage durations in the graph.
+function readSleepDuration(text){
+ const t=normalize(text).replace(/\r/g,'');
+ const lines=t.split('\n').map(x=>x.trim()).filter(Boolean);
+ const label=/\b(?:total\s*time\s*asleep|total\s*sleep|time\s*asleep|actual\s*sleep|sleep\s*duration)\b/i;
+ const stop=/\b(?:time\s*in\s*bed|sleep\s*efficiency|sleep\s*details|awake|rem|light|deep)\b/i;
+ let region='';
+ for(let i=0;i<lines.length;i++){
+  const m=label.exec(lines[i]);if(!m)continue;
+  region=lines[i].slice(m.index+m[0].length);
+  for(let j=i+1;j<Math.min(i+4,lines.length);j++){
+   if(stop.test(lines[j]))break;
+   region+=' '+lines[j];
+  }
+  break;
+ }
+ if(!region)return '';
+ // The part after '/' is RingConn's TARGET (e.g. '/ 8hr'), not actual sleep.
+ region=region.split('/')[0];
+ // Prefer a pair of hours + minutes. The same line often contains '/ 8hr'
+ // which is just the sleep target and MUST NOT replace actual sleep.
+ const pair=region.match(/\b(\d{1,2})\s*(?:hours?|hrs?|hr|h)\s*(\d{1,2})\s*(?:minutes?|mins?|min|m)\b/i);
+ if(pair){const dur=Number(pair[1])*60+Number(pair[2]);return dur>=60&&dur<=960&&Number(pair[2])<60?minutesToHHMM(dur):''}
+ const first=region.match(/\b(\d{1,2})\s*(?:hours?|hrs?|hr|h)\b/i);
+ if(first&&Number(first[1])>=1&&Number(first[1])<=16&&!/\b(?:\d+\s*(?:min|m))\b/i.test(region.slice(0,first.index)))return minutesToHHMM(Number(first[1])*60);
+ return '';
+}
 // ROI reading is accepted only if it contains exactly one time duration.
 // Percentages and other stray figures cannot turn into sleep minutes.
 function rowDuration(source){
@@ -192,7 +308,7 @@ const labels={
  deep:/\bdeep\s*sleep\b|النوم العميق/i,
  timeInBed:/\btime\s*in\s*bed\b/i,
  efficiency:/\bsleep\s*efficiency\b|كفاءة النوم/i,
- duration:/\b(?:actual\s*sleep|total\s*sleep|sleep\s*duration|time\s*asleep)\b|النوم الفعلي|مدة النوم/i
+ duration:/\b(?:actual\s*sleep|total\s*time\s*asleep|total\s*sleep|sleep\s*duration|time\s*asleep)\b|النوم الفعلي|مدة النوم/i
 };
 const anyLabel=new RegExp(Object.values(labels).map(re=>`(?:${re.source})`).join('|'),'i');
 function labelledFragment(re,lines){
@@ -231,17 +347,17 @@ function nearbyEfficiency(lines){
  return '';
 }
 function clockInterval(text,re){
- const s=normalize(text),match=s.match(re);if(!match)return null;
+ const s=normalize(text).replace(/\s+/g,' '),match=s.match(re);if(!match)return null;
  const one=Number(match[1])*60+Number(match[2]),two=Number(match[3])*60+Number(match[4]);
  if(Number(match[1])>23||Number(match[3])>23||Number(match[2])>59||Number(match[4])>59)return null;
  return {start:`${String(match[1]).padStart(2,'0')}:${match[2]}`,end:`${String(match[3]).padStart(2,'0')}:${match[4]}`,minutes:(two-one+1440)%1440};
 }
 function matchSleepInterval(s){
  // Only use times explicitly linked to the sleep tab; do not interpret graph ticks.
- return clockInterval(s,/\bSleep\s+(\d{1,2})\s*:\s*([0-5]\d)\s*[-–—]\s*(\d{1,2})\s*:\s*([0-5]\d)/i);
+ return clockInterval(s,/\b(?:Sleep|S1eep|SIeep)\s*:?[ \t]*(\d{1,2})\s*[:.]\s*([0-5]\d)\s*[-–—~]+\s*(\d{1,2})\s*[:.]\s*([0-5]\d)/i);
 }
 function matchNapInterval(s){
- return clockInterval(s,/\bNap\s+(\d{1,2})\s*:\s*([0-5]\d)\s*[-–—]\s*(\d{1,2})\s*:\s*([0-5]\d)/i);
+ return clockInterval(s,/\bNap\s*:?[ \t]*(\d{1,2})\s*[:.]\s*([0-5]\d)\s*[-–—~]+\s*(\d{1,2})\s*[:.]\s*([0-5]\d)/i);
 }
 function stagePercentMismatch(times,percents){
  const total=Object.values(times).reduce((acc,x)=>acc+x,0);
@@ -265,111 +381,56 @@ function toMinutes(s){if(!/^\d{2}:\d{2}$/.test(s||''))return null;const [h,m]=s.
 export function parseSleepOCR(source,baseDate=new Date()){
  const sections=typeof source==='string'?{full:source}:source?.sections||{full:source?.text||''};
  const linesOf=s=>normalize(s).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
- const stages=linesOf(sections.stages||sections.full||''),head=linesOf(sections.header||sections.full||'');
- const fields={duration:'',deep:'',light:'',rem:'',awake:'',efficiency:'',timeInBed:'',sleepDate:'',bedtime:'',wakeTime:'',nap:''};
+ const head=linesOf(sections.header||sections.full||'');
+ const fields={sleepDate:'',duration:'',bedtime:'',wakeTime:'',napStart:'',napEnd:'',nap:''};
  const evidence={},warnings=[];
- if(sections.anchoredStages){warnings.push(...(sections.stageWarnings||[]).filter(w=>!w.includes('تعذر ربط')&&!w.includes('غير واضح')).slice(0,2).map(w=>'OCR: '+w));}
- for(const key of ['deep','light','rem','awake']){
-  const fromRow=rowDuration(sections.stageRows?.[key]||'');
-  fields[key]=fromRow||(!sections.anchoredStages?nearby(key,labels[key],stages):'');
-  if(fields[key])evidence[key]=fromRow?'مقروء من صف المرحلة مباشرة':'مربوط باسم المرحلة في النص';
- }
- fields.timeInBed=nearby('timeInBed',labels.timeInBed,head);
- if(fields.timeInBed)evidence.timeInBed='مقروء من Time in Bed';
- fields.duration=nearby('duration',labels.duration,head);
- if(fields.duration)evidence.duration='مقروء مباشرة';
- fields.efficiency=nearbyEfficiency(head);
- if(fields.efficiency)evidence.efficiency='مقروء من Sleep Efficiency';
- // The neighboring day (e.g. Oct 23) must NEVER substitute for the
- // centered selected day ('Today'). Trust the tighter selected-date crop only.
+ fields.duration=readSleepDuration(sections.header||sections.full||'') || sections.tightDuration || '';
+ if(sections.tightDuration && !readSleepDuration(sections.header||sections.full||''))warnings.push(sections.durationWarning||'مدة النوم مستخرجة من سطر الأرقام مباشرةً؛ تحقق منها قبل الحفظ.');
+ if(fields.duration)evidence.duration='من خانة Total Time Asleep أعلى الصورة';
+ else warnings.push('تعذر قراءة Total Time Asleep؛ أدخل مدة النوم يدويًا.');
+ // Read the selected day only. Never take neighboring carousel dates.
  const selected=normalize(sections.selectedDate||'');
  if(/\bto\s*day\b/i.test(selected)){
   fields.sleepDate=asLocalISO(baseDate);
-  evidence.sleepDate='Today: تاريخ الجهاز الحالي وقت قراءة الصورة؛ راجعه إذا كانت الصورة قديمة';
-  warnings.push('اخترنا تاريخ اليوم من كلمة Today؛ إذا كانت الصورة ملتقطة في يوم سابق، صحح التاريخ.');
+  evidence.sleepDate='Today في الصورة — تاريخ الجهاز الحالي؛ تأكد منه إن كانت الصورة قديمة';
+  warnings.push('عند ظهور Today استخدمنا تاريخ الجهاز الحالي؛ راجع التاريخ إذا كانت الصورة قديمة.');
  }else{
-  const detected=selectedDate(selected,baseDate);
-  if(detected){fields.sleepDate=detected.date;evidence.sleepDate=detected.yearInferred?'الشهر واليوم مقروءان؛ السنة مقدّرة':'التاريخ المحدد مقروء';}
-  else warnings.push('لم يُقرأ التاريخ المحدد في منتصف الشريط؛ تركناه فارغًا بدل اختيار تاريخ اليوم المجاور.');
+  const detected=selectedDate(selected||sections.full||'',baseDate);
+  if(detected){fields.sleepDate=detected.date;evidence.sleepDate=detected.yearInferred?'اليوم والشهر من الصورة، والسنة مقدرة':'من التاريخ المختار في الصورة';}
+  else warnings.push('تعذر تحديد تاريخ الاستيقاظ؛ اختره يدويًا.');
  }
- const wholeHeader=sections.header||sections.full||'';
- const sleep=matchSleepInterval(wholeHeader);
- if(sleep&&sleep.minutes>=90&&sleep.minutes<=900){fields.bedtime=sleep.start;fields.wakeTime=sleep.end;evidence.bedtime='من وقت Sleep الظاهر';evidence.wakeTime='من وقت Sleep الظاهر';}
- // If RingConn shows no explicit 'Sleep 04:09–12:06' tab, use the
- // time-axis end ticks. Never select the central ticks as bed/wake times.
- if(!fields.bedtime&&sections.axis){
-  const tickText=normalize(sections.axis);
-  const ticks=[...tickText.matchAll(/\b([01]?\d|2[0-3])\s*:\s*([0-5]\d)\b/g)]
-   .map(m=>`${String(Number(m[1])).padStart(2,'0')}:${m[2]}`);
-  if(ticks.length>=2&&ticks.length<=5){
-   const start=toMinutes(ticks[0]),end=toMinutes(ticks[ticks.length-1]);
-   const elapsed=(end-start+1440)%1440,bedTime=toMinutes(fields.timeInBed);
-   if(elapsed>=90&&elapsed<=900&&(bedTime===null||Math.abs(elapsed-bedTime)<=25)){
-    fields.bedtime=ticks[0];fields.wakeTime=ticks[ticks.length-1];
-    evidence.bedtime='أول علامة زمنية في محور النوم';evidence.wakeTime='آخر علامة زمنية في محور النوم';
+ const tabs=sections.tabs||sections.header||sections.full||'';
+ const sleep=matchSleepInterval(tabs);
+ if(sleep&&sleep.minutes>=90&&sleep.minutes<=900){
+  fields.bedtime=sleep.start;fields.wakeTime=sleep.end;
+  evidence.bedtime='من وقت Sleep المكتوب فوق الرسم';evidence.wakeTime='من وقت Sleep المكتوب فوق الرسم';
+ }else{
+  // Graph's first and last X-axis tick; never accept a middle tick.
+  const l=singleAxisClock(sections.axisStart||sections.axisLeftText||'');
+  const r=singleAxisClock(sections.axisEnd||sections.axisRightText||'');
+  if(l&&r){
+   const from=toMinutes(l),to=toMinutes(r),elapsed=(to-from+1440)%1440;
+   if(elapsed>=90&&elapsed<=900){
+    fields.bedtime=l;fields.wakeTime=r;
+    evidence.bedtime='أول وقت أسفل الرسم';evidence.wakeTime='آخر وقت أسفل الرسم';
+   }
+  }
+  // Direct plain-text OCR fallback: use an unambiguous axis of 3–5 ticks.
+  if(!fields.bedtime&&sections.axis){
+   const ticks=[...normalize(sections.axis).matchAll(/\b(?:[01]?\d|2[0-3])\s*:\s*[0-5]\d\b/g)].map(m=>m[0].replace(/\s/g,'').padStart(5,'0'));
+   if(ticks.length>=3&&ticks.length<=5){
+    const elapsed=(toMinutes(ticks.at(-1))-toMinutes(ticks[0])+1440)%1440;
+    if(elapsed>=90&&elapsed<=900){fields.bedtime=ticks[0];fields.wakeTime=ticks.at(-1);evidence.bedtime='أول وقت في محور الرسم';evidence.wakeTime='آخر وقت في محور الرسم';}
    }
   }
  }
- const nap=matchNapInterval(sections.napHeader||wholeHeader)||matchNapInterval(wholeHeader);
- if(nap&&nap.minutes>0&&nap.minutes<=240){fields.nap=String(nap.minutes);evidence.nap=`من وقت Nap ${nap.start}–${nap.end}`;}
- // Stage percentages may reveal a dropped leading hour in OCR (e.g. 1hr 25min -> 25min).
- const stageKeys=['awake','rem','light','deep'];
- const percents=sections.anchoredStages?{}:Object.fromEntries(stageKeys.map(k=>[k,percentageFor(labels[k],stages)]).filter(([,v])=>v!==null));
- const times=Object.fromEntries(stageKeys.map(k=>[k,toMinutes(fields[k])]).filter(([,v])=>v!==null));
- const pctCount=Object.keys(percents).filter(k=>times[k]!==undefined).length;
- // Stage duration that contradicts its own percentage is almost always OCR
- // text bleeding over from another row. Blank it rather than silently guessing.
- // This also catches the reported 'Awake = 02:00' when RingConn says 3.2% / 15min.
- if(fields.timeInBed){
-  const bedMinutes=toMinutes(fields.timeInBed);
-  for(const key of stageKeys){
-   if(times[key]===undefined||percents[key]===undefined||!bedMinutes)continue;
-   // RingConn percentages are based on the sum of stages, not necessarily
-   // all 'time in bed', so allow generous tolerance for detection only.
-   const largestExpected=bedMinutes*(percents[key]/100)+18;
-   if(times[key]>largestExpected+30){
-    fields[key]='';delete times[key];
-    evidence[key]='';
-    warnings.push(`قراءة ${key} لا تتفق مع نسبة المرحلة؛ تركناها فارغة بدل حفظ مدة خاطئة.`);
-   }
-  }
+ if(!fields.bedtime||!fields.wakeTime)warnings.push('وقت بداية النوم أو نهايته غير واضح؛ راجعه يدويًا.');
+ const nap=matchNapInterval(tabs);
+ if(nap&&nap.minutes>0&&nap.minutes<=240){
+  fields.napStart=nap.start;fields.napEnd=nap.end;fields.nap=String(nap.minutes);
+  evidence.napStart='بداية الغفوة من خانة Nap';evidence.napEnd='نهاية الغفوة من خانة Nap';
  }
- if(pctCount>=3&&stageKeys.every(k=>times[k]!==undefined)){
-  const measured=Object.fromEntries(stageKeys.filter(k=>percents[k]!==undefined).map(k=>[k,percents[k]]));
-  const baseline=stagePercentMismatch(times,measured);
-  if(baseline>1.2){
-   const possibilities=stageKeys.flatMap(k=>{
-    if(times[k]>=60)return [];
-    const candidate={...times,[k]:times[k]+60};
-    const mismatch=stagePercentMismatch(candidate,measured);
-    return mismatch<=1.2?[{k,candidate,mismatch}]:[];
-   });
-   if(possibilities.length===1){
-    const match=possibilities[0];
-    fields[match.k]=minutesToHHMM(match.candidate[match.k]);
-    evidence[match.k]='ساعة مستعادة من توافق نسب المراحل؛ راجع القيمة قبل الحفظ';
-    warnings.push('تم اقتراح تصحيح ساعة مفقودة في قراءة إحدى المراحل بناءً على النسب الظاهرة؛ راجعها قبل الحفظ.');
-   }else warnings.push('مدد المراحل لا تتوافق مع النسب الظاهرة؛ راجع القيم قبل الحفظ.');
-  }
- }
- if(!fields.rem&&fields.awake&&fields.timeInBed&&toMinutes(fields.awake)>Math.max(75,toMinutes(fields.timeInBed)*0.22)){
-  fields.awake='';evidence.awake='';
-  warnings.push('مدة الاستيقاظ غير منطقية مع غياب REM؛ تركناها فارغة لمراجعتها.');
- }
- const values=['deep','light','rem'].map(k=>toMinutes(fields[k]));
- if(values.every(v=>v!==null)){
-  const calculated=minutesToHHMM(values.reduce((a,b)=>a+b,0));
-  if(!fields.duration){
-   if(warnings.some(w=>w.includes('لا تتوافق مع النسب'))){warnings.push('لم نحسب إجمالي النوم تلقائيًا بسبب تعارض في قراءة المراحل.');}
-   else {fields.duration=calculated;evidence.duration='محسوب من مجموع العميق والخفيف وREM';if(!Object.keys(percents).length)warnings.push('النوم الفعلي محسوب من المراحل دون نسب للتدقيق؛ تأكد أن OCR لم يسقط رقم ساعة.');}
-  }else if(Math.abs(toMinutes(fields.duration)-toMinutes(calculated))>5)
-   warnings.push(`إجمالي النوم ${fields.duration} لا يطابق مجموع المراحل ${calculated}؛ صحح القيم قبل الحفظ.`);
- }
- if(fields.timeInBed&&fields.duration&&toMinutes(fields.duration)>toMinutes(fields.timeInBed))warnings.push('النوم الفعلي أكبر من وقت السرير؛ راجع الأرقام.');
- if(fields.timeInBed&&fields.efficiency&&fields.duration){
-  const implied=Math.round(100*toMinutes(fields.duration)/toMinutes(fields.timeInBed));
-  if(Math.abs(implied-Number(fields.efficiency))>5)warnings.push('كفاءة النوم تختلف عن حساب المدد؛ راجع الأرقام.');
- }
- if(!['deep','light','rem'].every(k=>fields[k]))warnings.push('بعض مراحل النوم لم تُقرأ بوضوح؛ تركناها فارغة.');
- return {fields,evidence,warnings,rawText:Object.entries(sections).map(([k,v])=>`[${k}]\n${v}`).join('\n\n')};
+ if(fields.nap&&fields.duration)warnings.push('مدة Total Time Asleep من أعلى الشاشة قد تشمل الغفوة؛ حفظنا الغفوة منفصلة دون إضافتها إلى المجموع.');
+ const rawText=Object.entries(sections).filter(([,v])=>typeof v==='string').map(([k,v])=>`[${k}]\n${v}`).join('\n\n');
+ return {fields,evidence,warnings,rawText};
 }
