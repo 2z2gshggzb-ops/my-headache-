@@ -67,37 +67,24 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 :root[data-theme=dark] .severity-day.kind-headache,:root[data-theme=dark] .severity-jump-date.kind-headache,:root[data-theme=dark] .sev-swatch.kind-headache{--sev-color:#e4a170}
 :root[data-theme=dark] .severity-day.kind-unknown,:root[data-theme=dark] .severity-jump-date.kind-unknown,:root[data-theme=dark] .sev-swatch.kind-unknown{--sev-color:#b4c0ca}
 
-/* v1.8.9 only: careful risk highlighting and separate water look-back cards. */
-:root{--risk:#b4383f;--risk-border:#cf6268}
-:root[data-theme=dark]{--risk:#ff868a;--risk-border:#dc7479}
-.risk-emphasis{border:2px solid var(--risk-border)!important;border-radius:12px}
-.compare-half.risk-emphasis>strong,.insight.risk-emphasis .insight-top strong,.water24-summary.risk-emphasis>strong{color:var(--risk)}
-.compare-half.risk-emphasis .compare-track span,.insight.risk-emphasis .insight-track span{background:var(--risk)}
-.water24-summary{display:flex;align-items:center;gap:11px;background:var(--surface2);border-radius:12px;padding:12px;margin:11px 0}
-.water24-summary>strong{font-size:28px;color:var(--accent);flex-shrink:0;font-variant-numeric:tabular-nums}
-.water24-summary b{font-size:13px;display:block}.water24-summary small{font-size:11px;color:var(--muted);display:block;line-height:1.6;margin-top:3px}
-.water24-panel{border-style:solid}.water24-lower .compare-half>span{min-height:36px}
+/* Yawmi 1.8.17: fit-to-period for the daily maximum-severity chart */
+.severity-view-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:7px;margin:9px 0 4px}
+.severity-view-switch{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface2)}
+.severity-view-switch button{background:transparent;color:var(--ink);border:0;padding:7px 8px;font-size:11px;white-space:nowrap}
+.severity-view-switch button.active{background:var(--accent);color:#fff;font-weight:700}
+.severity-view-range{font-size:10px;color:var(--muted);direction:ltr}
+.severity-layout.is-fit .severity-scroll{overflow-x:hidden}
+.severity-layout.is-fit .severity-plot{width:100%;min-width:0;display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));gap:0}
+.severity-layout.is-fit .severity-day{box-sizing:border-box;min-width:0;max-width:none;flex:none;padding:0;gap:0;justify-content:flex-start}
+.severity-layout.is-fit .severity-track{height:211px}
+.severity-layout.is-fit .severity-column{width:clamp(1px,65%,18px);border-radius:2px 2px 0 0}
+.severity-layout.is-fit .severity-kind-label,.severity-layout.is-fit .severity-kind-placeholder,.severity-layout.is-fit .severity-date,.severity-layout.is-fit .severity-point{display:none}
+.severity-layout.is-fit.is-short .severity-date{display:block;font-size:9px;letter-spacing:-.3px}
+.severity-layout.is-fit.is-short .severity-point{display:block;font-size:9px}
+.severity-layout.is-fit .severity-day:hover .severity-track,.severity-layout.is-fit .severity-day:focus-visible .severity-track{background:color-mix(in srgb,var(--sev-color,var(--accent)) 12%,transparent)}
 
-/* v1.8.10: per-episode water amounts, without changing other analytics */
-.water24-episodes{margin-top:12px;padding:10px 12px;border:1px solid var(--border, #dfe7eb);border-radius:12px}
-.water24-episodes summary{font-weight:700;cursor:pointer;font-size:.9rem}
-.water24-episode-row{display:flex;align-items:center;gap:8px;padding:9px 2px;flex-wrap:wrap;border-bottom:1px solid var(--border, #e3e9ec);font-size:.85rem}
-.water24-episode-row:last-child{border-bottom:0}
-.water24-episode-row b{margin-inline-start:auto;white-space:nowrap}
-.water24-episode-row small{width:100%;color:var(--muted, #6a7b86)}
-
-/* v1.8.12 medication response: three-category, high-contrast, mobile-friendly */
-.medicine-panel .med-legend{display:flex;flex-wrap:wrap;gap:8px 13px;font-size:11px;margin:12px 0;color:var(--ink)}
-.med-dot{width:11px;height:11px;border-radius:4px;display:inline-block;vertical-align:middle;margin-inline-end:4px}
-.med-full{background:#218468}.med-partial{background:#c08a19}.med-none{background:#bd4a4a}
-.medicine-row{padding:14px 0;border-top:1px solid var(--line)}
-.medicine-row:first-of-type{border-top:0}
-.med-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.med-head strong{font-size:14px}.med-head small{font-size:11px;color:var(--muted)}
-.med-stacked-chart{display:flex;direction:ltr;width:100%;height:24px;border-radius:9px;overflow:hidden;background:var(--surface2);margin-top:11px;gap:2px}
-.med-stacked-chart>span{height:100%;min-width:2px}.med-stacked-empty{background:var(--surface2);font-size:11px;color:var(--muted);border-radius:9px;padding:11px;margin-top:11px}
-.med-stat-grid{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;font-size:11px;font-weight:650;margin:9px 0}
-.med-text-full{color:#218468}.med-text-partial{color:#b58110}.med-text-none{color:#bd4a4a}.med-pending{color:var(--muted)}
-.med-dose-details{margin-top:10px}.med-dose-details summary{font-size:12px;cursor:pointer;color:var(--ink);font-weight:600}
-.med-dose-entry{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11px;line-height:1.5}
-.med-dose-entry:last-child{border:0}.med-dose-entry>b{text-align:left}
+/* Sparse readable x-axis ticks in Fit, instead of overlapping every date */
+.severity-layout.is-fit:not(.is-short) .severity-date.is-tick{display:block;position:absolute;top:213px;left:50%;transform:translateX(-50%);font-size:9px;line-height:15px;font-weight:600;z-index:1;pointer-events:none}
+.severity-layout.is-fit:not(.is-short) .severity-day:first-child .severity-date.is-tick{left:0;transform:none}
+.severity-layout.is-fit:not(.is-short) .severity-day:last-child .severity-date.is-tick{left:auto;right:0;transform:none}
+.severity-layout.is-fit .severity-plot{overflow:hidden}
