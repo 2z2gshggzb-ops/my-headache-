@@ -83,8 +83,39 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .severity-layout.is-fit.is-short .severity-point{display:block;font-size:9px}
 .severity-layout.is-fit .severity-day:hover .severity-track,.severity-layout.is-fit .severity-day:focus-visible .severity-track{background:color-mix(in srgb,var(--sev-color,var(--accent)) 12%,transparent)}
 
-/* Sparse readable x-axis ticks in Fit, instead of overlapping every date */
-.severity-layout.is-fit:not(.is-short) .severity-date.is-tick{display:block;position:absolute;top:213px;left:50%;transform:translateX(-50%);font-size:9px;line-height:15px;font-weight:600;z-index:1;pointer-events:none}
-.severity-layout.is-fit:not(.is-short) .severity-day:first-child .severity-date.is-tick{left:0;transform:none}
-.severity-layout.is-fit:not(.is-short) .severity-day:last-child .severity-date.is-tick{left:auto;right:0;transform:none}
-.severity-layout.is-fit .severity-plot{overflow:hidden}
+
+/* v1.8.18 — discreet Botox shortcut + standalone follow-up */
+.botox-top-btn{font-size:18px!important;width:32px;height:32px;opacity:.88}
+.botox-top-btn.is-active{color:var(--accent);background:var(--soft)}
+.botox-main{padding-bottom:15px}
+.botox-last{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.botox-last div{display:flex;flex-direction:column;gap:5px}
+.botox-last small,.botox-next>span{font-size:12px;color:var(--muted)}
+.botox-last strong{font-size:15px}
+.botox-next{display:flex;flex-direction:column;gap:5px;margin-top:18px}
+.botox-next strong{font-size:20px;line-height:1.5;color:var(--ink)}
+.botox-next b{font-size:15px;color:var(--accent)}
+.botox-next small{line-height:1.7;font-size:11px;color:var(--muted)}
+.botox-progress{margin:14px 0;height:8px;background:var(--line);border-radius:20px;overflow:hidden}
+.botox-progress span{height:100%;display:block;background:var(--accent);border-radius:20px}
+.botox-appointment{display:flex;flex-wrap:wrap;align-items:end;gap:9px;padding:13px 0;border-top:1px solid var(--line)}
+.botox-appointment .field{flex:1 1 180px;margin:0}
+.botox-appointment .btn{flex:0 0 auto}
+.botox-months{display:grid;grid-template-columns:1fr;gap:10px;margin-top:13px}
+.botox-month{border:1px solid var(--line);border-radius:12px;background:var(--surface2);padding:12px}
+.botox-month-title{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:13px}
+.botox-month-title span{font-size:11px;color:var(--muted)}
+.botox-month-count{display:flex;flex-direction:column;gap:6px;margin:11px 0}
+.botox-month-count strong{font-size:17px;color:var(--ink)}
+.botox-month-count small{font-size:11px;line-height:1.6;color:var(--muted)}
+.botox-month-track{height:7px;background:var(--line);border-radius:20px;overflow:hidden}
+.botox-month-track>span{display:block;height:100%;background:var(--accent);border-radius:20px}
+.botox-trend{padding:13px;margin-top:13px;background:var(--soft);border-radius:12px;line-height:1.8;font-size:12px;color:var(--ink)}
+.botox-plot{max-width:100%;overflow-x:auto;margin-top:9px}
+.botox-table-scroll{overflow-x:auto;margin:12px -2px;max-width:100%}
+.botox-table{border-collapse:collapse;min-width:560px;width:100%;font-size:12px}
+.botox-table th,.botox-table td{border-bottom:1px solid var(--line);padding:9px 7px;text-align:right;white-space:normal;vertical-align:top}
+.botox-table th{color:var(--muted);font-size:11px}
+.botox-table td small{display:block;font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px}
+.botox-link{border:0;background:none;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit;text-align:right;padding:0}
+@media(max-width:380px){.botox-appointment .btn{font-size:11px}.botox-next strong{font-size:18px}}

@@ -93,7 +93,7 @@ function summary(r){switch(r.type){case 'water':return `ماء — ${r.ml} مل`
 function detail(r){if(r.type==='sleep')return `تاريخ الاستيقاظ ${r.sleepDate}`;if(r.type==='headache'&&r.episodeId)return `${fmtTime(r.at)} · ${Number(r.severity)===0?'انتهى الألم':(r.relation==='possible_return_24h'?'عودة محتملة (نوبة مستقلة)':kinds[r.kind])}`;return fmtTime(r.at)}
 function eventRow(r){return `<button class="list-row" data-open="${E(r.id)}"><span class="row-icon">${icons[r.type]||'•'}</span><span class="row-body"><strong>${E(summary(r))}</strong><small>${E(detail(r))}</small></span><span class="row-arrow">‹</span></button>`}
 function dayCards(d,showMaximum=false){const v=valuesDay(d),maxHead=showMaximum&&v.heads.length?[...v.heads].filter(x=>Number.isFinite(Number(x.severity))).sort((a,b)=>Number(b.severity)-Number(a.severity))[0]:null,h=showMaximum?(maxHead||null):v.current;return `<div class="cards"><div class="stat"><span class="stat-name"><span class="symbol">◌</span>أعراض الرأس</span><b>${h?h.severity+'%':'—'}</b><span class="hint">${h?(showMaximum?'أعلى شدة خلال اليوم':(Number(h.severity)===0?'انتهى الألم':E(kinds[h.kind]||'آخر قياس'))):'لا توجد قراءة اليوم'}</span></div><div class="stat"><span class="stat-name"><span class="symbol">◉</span>الماء</span><b>${v.water.toLocaleString('en-US')}</b><span class="hint">مل مسجل اليوم</span></div><div class="stat"><span class="stat-name"><span class="symbol">☾</span>النوم</span><b>${E(v.sleep?.duration||'—')}</b><span class="hint">النوم الفعلي</span></div><div class="stat"><span class="stat-name"><span class="symbol">♨</span>القهوة والمشروبات</span><b>${v.coffee.length}</b><span class="hint">مرات مسجلة</span></div></div>`}
-function renderToday(){const d=localDate(now()),v=valuesDay(d);return `<div class="view-title"><div><h1>يومي</h1><span class="sub">${E(fmtDay(d))}</span></div><span class="pill">محلي وخاص</span></div>${dayCards(d)}<div class="section-title"><strong>إضافة سريعة</strong></div><div class="quick-grid"><button class="quick-btn" data-quick="cup"><span class="q-ic">◉</span><span>كاسة</span></button><button class="quick-btn" data-quick="bottle"><span class="q-ic">◉</span><span>قارورة</span></button><button class="quick-btn" data-quick="headache"><span class="q-ic">◌</span><span>صداع</span></button><button class="quick-btn" data-quick="coffee"><span class="q-ic">♨</span><span>قهوة</span></button><button class="quick-btn" data-quick="food"><span class="q-ic">▤</span><span>أكل</span></button><button class="quick-btn" data-quick="med"><span class="q-ic">✚</span><span>دواء</span></button></div><div class="section-title"><strong>آخر الأحداث</strong><button class="btn ghost small" data-go="history">السجل ‹</button></div>${v.records.length?v.records.slice(0,7).map(eventRow).join(''):'<div class="empty">ما فيه تسجيلات لليوم بعد. ابدأ بكاسة ماء أو سجل أي ملاحظة.</div>'}<div class="section-title"><strong>خيارات إضافية</strong></div><div class="btn-row"><button class="btn secondary small" data-quick="sleep">☾ تسجيل النوم</button><button class="btn secondary small" data-quick="clear">✓ يوم بدون أعراض</button><button class="btn ghost small" data-quick="note">✎ ملاحظة</button><button class="btn ghost small" data-quick="botox">✣ علاج وقائي</button></div>`}
+function renderToday(){const d=localDate(now()),v=valuesDay(d);return `<div class="view-title"><div><h1>يومي</h1><span class="sub">${E(fmtDay(d))}</span></div><span class="pill">محلي وخاص</span></div>${dayCards(d)}<div class="section-title"><strong>إضافة سريعة</strong></div><div class="quick-grid"><button class="quick-btn" data-quick="cup"><span class="q-ic">◉</span><span>كاسة</span></button><button class="quick-btn" data-quick="bottle"><span class="q-ic">◉</span><span>قارورة</span></button><button class="quick-btn" data-quick="headache"><span class="q-ic">◌</span><span>صداع</span></button><button class="quick-btn" data-quick="coffee"><span class="q-ic">♨</span><span>قهوة</span></button><button class="quick-btn" data-quick="food"><span class="q-ic">▤</span><span>أكل</span></button><button class="quick-btn" data-quick="med"><span class="q-ic">✚</span><span>دواء</span></button></div><div class="section-title"><strong>آخر الأحداث</strong><button class="btn ghost small" data-go="history">السجل ‹</button></div>${v.records.length?v.records.slice(0,7).map(eventRow).join(''):'<div class="empty">ما فيه تسجيلات لليوم بعد. ابدأ بكاسة ماء أو سجل أي ملاحظة.</div>'}<div class="section-title"><strong>خيارات إضافية</strong></div><div class="btn-row"><button class="btn secondary small" data-quick="sleep">☾ تسجيل النوم</button><button class="btn secondary small" data-quick="clear">✓ يوم بدون أعراض</button><button class="btn ghost small" data-quick="note">✎ ملاحظة</button></div>`}
 function moveMonth(delta){const [y,m]=app.month.split('-').map(Number);const d=new Date(y,m-1+delta,1);app.month=localDate(d).slice(0,7);app.date=`${app.month}-01`;render()}
 function calendar(){const [y,m]=app.month.split('-').map(Number),first=new Date(y,m-1,1).getDay(),length=new Date(y,m,0).getDate(),prefix=first,suffix=(7-(prefix+length)%7)%7,rows=[];for(let i=0;i<prefix;i++)rows.push('<span></span>');for(let i=1;i<=length;i++){const date=`${app.month}-${String(i).padStart(2,'0')}`,has=app.records.some(r=>recordDate(r)===date),sel=app.date===date;rows.push(`<button data-date="${date}" class="${sel?'selected':''} ${has?'has':''}">${i}</button>`)}for(let i=0;i<suffix;i++)rows.push('<span></span>');return `<div class="panel"><div class="calendar-header"><button class="btn ghost small" data-month="-1">›</button><strong>${new Date(y,m-1,14).toLocaleDateString('ar-SA',{month:'long',year:'numeric',calendar:'gregory'})}</strong><button class="btn ghost small" data-month="1">‹</button></div><div class="cal">${['أحد','إثن','ثلا','أرب','خمي','جمع','سبت'].map(x=>`<span class="dow">${x}</span>`).join('')}${rows.join('')}</div></div>`}
 function renderHistory(){const records=recordsDay(app.date).filter(r=>(app.filter==='all'||r.type===app.filter)&&(!app.search||summary(r).toLowerCase().includes(app.search.toLowerCase())||(r.notes||'').toLowerCase().includes(app.search.toLowerCase())));return `<div class="view-title"><div><h1>السجل</h1><span class="sub">التقويم والأحداث والتعديل</span></div></div>${calendar()}${dayCards(app.date,true)}<div class="field"><label>بحث في تسجيلات اليوم</label><input id="search-field" type="search" value="${E(app.search)}" placeholder="Ubrelvy أو V60 أو كلمة في الملاحظات"></div><div class="segmented" id="history-filters">${[['all','الكل'],['headache','الرأس'],['water','الماء'],['med','الأدوية'],['sleep','النوم'],['food','الطعام']].map(([k,v])=>`<button data-filter="${k}" class="${app.filter===k?'active':''}">${v}</button>`).join('')}</div><div class="section-title"><strong>${E(fmtDay(app.date))}</strong><button class="btn secondary small" data-add-at-date="${app.date}">+ إضافة</button></div>${records.length?records.map(eventRow).join(''):'<div class="empty">لا توجد نتائج مطابقة في هذا اليوم.</div>'}`}
@@ -151,8 +151,7 @@ function chartSvg(daily){
  const countOther=visible.filter(x=>x.kind==='heavy').length;
  const countUnknown=visible.filter(x=>x.kind==='unknown').length;
  const found=visible.filter(x=>x.kind==='migraine'||x.kind==='headache');
- const tickEvery=Math.max(1,Math.ceil(visible.length/7));
- const dayBars=visible.map((row,i)=>{
+ const dayBars=visible.map(row=>{
    const d=row.day.split('-'),date=`${Number(d[2])}/${Number(d[1])}`;
    const valid=row.maximum!==null;
    const severity=valid?Math.max(0,Math.min(100,Number(row.maximum)||0)):null;
@@ -161,7 +160,7 @@ function chartSvg(daily){
    const reading=valid?`${severity}%`:row.described?'صداع موثق وصفياً، بلا نسبة':'لا توجد قراءة';
    const label=kindLabel?`${kindLabel} — أعلى شدة ${reading}`:reading;
    const tag=kindLabel?`<span class="severity-kind-label" aria-hidden="true">${E(kindLabel)}</span>`:'<span class="severity-kind-placeholder" aria-hidden="true"></span>';
-   return `<button type="button" class="severity-day kind-${row.kind}" data-chart-day="${row.day}" title="${E(date)}: ${E(label)}" aria-label="${E(date)} — ${E(label)}"><span class="severity-track">${content}${valid&&severity>0?`<span class="severity-point" style="bottom:calc(${severity}% + 3px)">${severity}%</span>`:''}</span><span class="severity-date ${(i%tickEvery===0||i===visible.length-1)?'is-tick':''}" dir="ltr">${date}</span>${tag}</button>`;
+   return `<button type="button" class="severity-day kind-${row.kind}" data-chart-day="${row.day}" title="${E(date)}: ${E(label)}" aria-label="${E(date)} — ${E(label)}"><span class="severity-track">${content}${valid&&severity>0?`<span class="severity-point" style="bottom:calc(${severity}% + 3px)">${severity}%</span>`:''}</span><span class="severity-date" dir="ltr">${date}</span>${tag}</button>`;
  }).join('');
  const legend=`<div class="severity-legend" aria-label="دليل ألوان أنواع أعراض الرأس"><span><i class="sev-swatch kind-migraine" aria-hidden="true"></i>شقيقة (${countMigraine})</span><span><i class="sev-swatch kind-headache" aria-hidden="true"></i>صداع (${countHeadache})</span><span><i class="sev-swatch kind-heavy" aria-hidden="true"></i>ثقل (${countOther})</span>${countUnknown?`<span><i class="sev-swatch kind-unknown" aria-hidden="true"></i>غير محدد (${countUnknown})</span>`:''}</div>`;
  const chips=found.length?`<div class="severity-jump"><span>أيام الصداع والشقيقة (${found.length}):</span>${found.map(row=>{const d=row.day.split('-');return `<button type="button" data-chart-jump="${row.day}" class="severity-jump-date kind-${row.kind}" aria-label="اذهب إلى ${kindLabels[row.kind]} يوم ${Number(d[2])}/${Number(d[1])}">${Number(d[2])}/${Number(d[1])}</button>`}).join('')}</div>`:'<p class="mini">ما فيه أيام صداع أو شقيقة مصنفة ضمن الفترة المختارة.</p>';
@@ -571,9 +570,155 @@ function renderAnalytics(){
  <div class="panel"><div class="severity-heading"><h3>أعلى شدة مسجلة يوميًا</h3><span class="mini">مقياس من 0 إلى 100%</span></div>${chartSvg(a.daily)}<p class="mini">النقطة = يوم صداع وصفي بلا نسبة. العلامة (—) = لا توجد قراءة. عند اختيار سنة أو «الكل» تظهر الأيام ذات التسجيل فقط.</p></div>
  ${medicationResponseHtml(a)}
  ${analyticsSettingsHtml()}
- <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">أي يوم منتهٍ بلا صداع أو أعراض رأس مسجّلة يُصنَّف تلقائيًا يومًا سليمًا، حتى لو لم تسجّل روتينًا. لا نفترض أن عدم تسجيل الماء يعني صفر مل. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>الاستجابة للأدوية</h3><p class="mini">الرسم البياني والتفاصيل ظاهرة فوق هذا القسم.</p><h3 style="margin-top:18px">العلاج الوقائي</h3>${preventiveSummary(a)}<div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
+ <details class="panel details-more"><summary>التحليل التفصيلي والتقارير</summary><div class="kv"><span>نوبات شقيقة مصنفة</span><strong>${a.migraineEpisodes.size}</strong></div><div class="kv"><span>أيام أعراض غير مصنفة كصداع</span><strong>${symptomOnly}</strong></div><div class="kv"><span>متوسط النوم المسجل</span><strong>${sleepAvg||'—'}</strong></div><div class="kv"><span>متوسط الماء بالأيام المسجلة</span><strong>${avgWater===null?'—':avgWater+' مل'}</strong></div><p class="info">أي يوم منتهٍ بلا صداع أو أعراض رأس مسجّلة يُصنَّف تلقائيًا يومًا سليمًا، حتى لو لم تسجّل روتينًا. لا نفترض أن عدم تسجيل الماء يعني صفر مل. في وضع «كل أعراض الرأس» تدخل أيام الثقل والصداع والشقيقة ضمن المقارنة، بينما يمكن حصرها بالصداع والشقيقة فقط من أعلى الصفحة. الصداع الموثق بملاحظة وصفية يُحتسب دون اختراع شدته.</p><h3>الاستجابة للأدوية</h3><p class="mini">الرسم البياني والتفاصيل ظاهرة فوق هذا القسم.</p><div class="btn-row"><button class="btn secondary" data-export="csv">تصدير CSV</button><button class="btn ghost" data-report="1">تقرير للطبيب / PDF</button></div></details>`;
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.17 (الشدة القصوى، Fit، حفظ التنقل)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+
+// Botox follow-up is a separate, infrequently used page. It never creates
+// symptoms from missing data and uses existing headache and medication records.
+const BOTOX_MONTHS=3;
+const utcDay=d=>Date.parse(d+'T00:00:00Z');
+const daysBetween=(a,b)=>Math.round((utcDay(b)-utcDay(a))/86400000);
+function shiftedCalendarMonths(date,months){
+ const [y,m,d]=date.split('-').map(Number);
+ const first=new Date(Date.UTC(y,m-1+months,1));
+ const monthDays=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+ first.setUTCDate(Math.min(d,monthDays));
+ return first.toISOString().slice(0,10);
+}
+function plusDays(date,days){return new Date(utcDay(date)+days*86400000).toISOString().slice(0,10)}
+function isBotox(r){return r.type==='botox'&&/(?:botox|بوتوكس|botulinum)/i.test(String(r.name||'Botox'))}
+function botoxSessions(){return [...app.records.filter(isBotox)].filter(r=>!Number.isNaN(new Date(r.at).getTime())).sort((a,b)=>new Date(a.at)-new Date(b.at));}
+function botoxNext(last){
+ if(!last)return {expected:'',date:'',confirmed:false};
+ const expected=shiftedCalendarMonths(recordDate(last),BOTOX_MONTHS);
+ const confirmed=app.settings.botoxAppointmentFor===last.id&&/^\d{4}-\d\d-\d\d$/.test(app.settings.botoxAppointment||'')&&app.settings.botoxAppointment>=recordDate(last);
+ return {expected,date:confirmed?app.settings.botoxAppointment:expected,confirmed};
+}
+function botoxDayFacts(day){
+ const records=app.records.filter(r=>r.type!=='botox'&&recordDate(r)===day);
+ const heads=records.filter(r=>r.type==='headache'&&Number(r.severity)>0);
+ const described=records.some(r=>documentedHeadNote(r));
+ const head=heads.some(r=>r.kind==='headache'||r.kind==='migraine')||described;
+ const migraine=heads.some(r=>r.kind==='migraine');
+ const allSymptom=heads.length>0||described;
+ const max=heads.length?Math.max(...heads.map(r=>Number(r.severity))):null;
+ const acute=records.some(r=>r.type==='med');
+ return {logged:records.length>0,head,migraine,allSymptom,max,acute};
+}
+function botoxInterval(start,end){
+ const today=localDate(now()),stop=end<today?end:today; // today is not yet a completed day
+ const dayCount=Math.max(0,daysBetween(start,stop));
+ let logged=0,head=0,migraine=0,allSymptom=0,acute=0;
+ const intensities=[];
+ for(let i=0;i<dayCount;i++){
+  const f=botoxDayFacts(plusDays(start,i));
+  if(f.logged)logged++;
+  if(f.head)head++;
+  if(f.migraine)migraine++;
+  if(f.allSymptom)allSymptom++;
+  if(f.acute)acute++;
+  if(f.max!==null)intensities.push(f.max);
+ }
+ // A missing headache means healthy under the user's convention during active
+ // follow-up. But historic gaps (e.g. 2 months with no diary at all) cannot be
+ // assumed healthy; suppress comparative rates unless data coverage is adequate.
+ const sufficient=dayCount>=14&&logged>=Math.ceil(dayCount*.5);
+ const per28=sufficient?Math.round(head/dayCount*280)/10:null;
+ return {start,end,dayCount,logged,head,migraine,allSymptom,acute,per28,sufficient,
+  meanSeverity:intensities.length?Math.round(intensities.reduce((a,b)=>a+b,0)/intensities.length):null,
+  coverage:dayCount?Math.round(logged*100/dayCount):0};
+}
+function botoxCycle(session,nextSession=null){
+ const start=recordDate(session),expected=shiftedCalendarMonths(start,3);
+ const end=nextSession?recordDate(nextSession):expected;
+ // Avoid backward or same-day intervals from duplicate entries.
+ const limits=[start,shiftedCalendarMonths(start,1),shiftedCalendarMonths(start,2),shiftedCalendarMonths(start,3)];
+ const months=[];
+ for(let i=0;i<3;i++){
+  const e=end<limits[i+1]?end:limits[i+1];
+  months.push(e>limits[i]?botoxInterval(limits[i],e):botoxInterval(limits[i],limits[i]));
+ }
+ const late=end>expected?botoxInterval(expected,end):null;
+ const overall=botoxInterval(start,end);
+ return {session,nextSession,start,end,expected,months,late,overall};
+}
+function botoxWeekly(cycle){
+ const from=cycle.start,to=cycle.end;
+ const count=Math.max(0,Math.min(80,Math.ceil(daysBetween(from,to)/7)));
+ return Array.from({length:count},(_,i)=>{
+  const start=plusDays(from,i*7),end=plusDays(start,7);
+  return botoxInterval(start,end>to?to:end);
+ });
+}
+function botoxWeeklySvg(cycle){
+ const weeks=botoxWeekly(cycle),available=weeks.some(w=>w.sufficient||w.logged>=4);
+ if(!available)return '<div class="empty">لا توجد أسابيع كافية لرسم اتجاه واضح بعد هذه الجلسة.</div>';
+ const w=600,h=180,l=24,r=16,t=16,b=33,plotW=w-l-r,plotH=h-t-b;
+ const x=i=>l+(weeks.length===1?plotW/2:i*plotW/(weeks.length-1));
+ const y=v=>t+plotH-v*plotH/7;
+ const dots=weeks.map((item,i)=>{
+  // Show actual number of symptomatic days only for weeks monitored ≥ 4 days,
+  // otherwise leave a gap instead of inventing zeros.
+  const valid=item.logged>=Math.min(4,item.dayCount)&&item.dayCount>=4;
+  return {...item,valid,x:x(i),y:valid?y(item.head):null,week:i+1};
+ });
+ const lines=[];
+ for(let i=1;i<dots.length;i++)if(dots[i-1].valid&&dots[i].valid)lines.push(`<line x1="${dots[i-1].x}" y1="${dots[i-1].y}" x2="${dots[i].x}" y2="${dots[i].y}" stroke="var(--accent)" stroke-width="2.5"/>`);
+ const circles=dots.filter(d=>d.valid).map(d=>`<circle cx="${d.x}" cy="${d.y}" r="4" fill="var(--accent)"><title>الأسبوع ${d.week}: ${d.head} يوم صداع/شقيقة من ${d.dayCount} أيام مكتملة، نشاط التسجيل ${d.logged} أيام</title></circle>`).join('');
+ const missing=dots.filter(d=>!d.valid).map(d=>`<text x="${d.x}" y="${y(0)-4}" fill="var(--muted)" font-size="13" text-anchor="middle">·</text>`).join('');
+ const grid=[0,2,4,6].map(v=>`<line x1="${l}" y1="${y(v)}" x2="${w-r}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${l-8}" y="${y(v)+4}" fill="var(--muted)" font-size="11" text-anchor="end">${v}</text>`).join('');
+ const labels=dots.filter((d,i)=>i===0||i===dots.length-1||i%2===0).map(d=>`<text x="${d.x}" y="${h-9}" text-anchor="middle" fill="var(--muted)" font-size="10">${d.week}</text>`).join('');
+ return `<div class="botox-plot"><svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="منحنى أيام الصداع والشقيقة بالأسبوع منذ الجلسة">${grid}${lines.join('')}${circles}${missing}${labels}</svg></div><p class="mini">الأرقام أسفل الرسم هي رقم الأسبوع بعد الجلسة. النقاط تمثل عدد أيام الصداع والشقيقة خلال الأسبوع، والفجوات تعني أن نشاط التسجيل غير كافٍ. هذا وصف للسجلات وليس إثباتًا لتأثير البوتوكس.</p>`;
+}
+function botoxMonthHtml(m,i){
+ const title=['الشهر الأول','الشهر الثاني','الشهر الثالث'][i];
+ if(m.end<=m.start)return `<div class="botox-month"><strong>${title}</strong><p class="mini">لم تبدأ هذه الفترة ضمن الدورة الحالية.</p></div>`;
+ const percent=Math.max(0,Math.min(100,m.dayCount?m.head/m.dayCount*100:0));
+ const rate=m.sufficient?`${m.per28} يوم / 28 يومًا`:'بيانات غير كافية';
+ return `<div class="botox-month"><div class="botox-month-title"><strong>${title}</strong><span>${E(fmtShort(m.start))} – ${E(fmtShort(plusDays(m.end,-1)))}</span></div><div class="botox-month-count"><strong>${E(rate)}</strong><small>${m.logged?m.head+' يوم صداع/شقيقة · '+m.migraine+' يوم شقيقة · ':''}${m.logged}/${m.dayCount} يوم فيه تسجيل</small></div><div class="botox-month-track"><span style="width:${m.sufficient?percent:0}%"></span></div>${!m.sufficient?'<p class="mini">لن نعتبر الأيام غير المتابعة خالية من الصداع أو نستنتج تحسنًا من هذه الفترة.</p>':''}</div>`;
+}
+function botoxTrend(cycle){
+ const ms=cycle.months;
+ if(!ms.every(x=>x.sufficient))return 'لا يمكن تحديد أفضل شهر أو تراجع المفعول بعد، لأن بيانات الأشهر الثلاثة غير مكتملة.';
+ const rates=ms.map(m=>m.per28);
+ const min=Math.min(...rates),best=rates.indexOf(min)+1;
+ const ending=rates[2]-rates[1];
+ const tail=ending>=1?'ارتفع معدل أيام الصداع في الشهر الثالث مقارنة بالثاني؛ قد يستحق النقاش مع الطبيب لاحتمال تراجع الفعالية قرب الموعد.':ending<=-1?'انخفض معدل أيام الصداع في الشهر الثالث مقارنة بالثاني.':'كان معدل أيام الصداع متقاربًا في الشهرين الثاني والثالث.';
+ return `أفضل معدل كان في الشهر ${['الأول','الثاني','الثالث'][best-1]}. ${tail} هذه مقارنة وصفية لا تثبت السبب.`;
+}
+function renderBotox(){
+ const sessions=botoxSessions(),last=sessions.at(-1),n=botoxNext(last),today=localDate(now());
+ const diff=last?daysBetween(today,n.date):null;
+ const headline=!last?'لا توجد جلسة مسجلة':diff>0?`باقي ${diff} يوم`:diff===0?'اليوم موعد الجلسة المتوقع':`تجاوز الموعد المتوقع بـ${Math.abs(diff)} يوم`;
+ const reminder=last?`<div class="botox-next"><span>الموعد ${n.confirmed?'المدخل':'المتوقع'} للجلسة القادمة</span><strong>${E(fmtDay(n.date))}</strong><b>${E(headline)}</b><small>${n.confirmed?'تم إدخاله يدويًا':'محسوب من تاريخ آخر جلسة + 3 أشهر تقويمية، وليس موعد حجز مؤكد'}</small></div><div class="botox-progress"><span style="width:${Math.max(0,Math.min(100,Math.round(daysBetween(recordDate(last),today)/Math.max(1,daysBetween(recordDate(last),n.expected))*100)))}%"></span></div>`:'<p class="info">سجل أول جلسة لتظهر مواعيد الجرعات القادمة وتبدأ المقارنات.</p>';
+ const appointment=last?`<form id="botox-appointment" class="botox-appointment"><label class="field"><span>موعد الطبيب المؤكد (اختياري)</span><input type="date" name="appointment" value="${n.confirmed?E(n.date):''}" min="${E(recordDate(last))}"></label><button class="btn secondary small" type="submit">حفظ الموعد</button><button class="btn ghost small" type="button" data-botox-reset="1">العودة إلى الموعد المتوقع</button></form><div class="btn-row"><button type="button" class="btn secondary" data-botox-calendar="1">إضافة الموعد للتقويم مع تنبيهات</button></div><p class="mini">تنبيهات التقويم قبل 30 و14 و7 أيام من الموعد. داخل «يومي» يظهر العدّاد عند فتح هذه الصفحة؛ التطبيق لا يرسل إشعارات تلقائية وهو مغلق.</p>`:'';
+ const cycles=sessions.map((s,i)=>botoxCycle(s,sessions[i+1]||null));
+ const latest=cycles.at(-1);
+ const comparisons=cycles.length?cycles.map((cycle,i)=>{
+  const r=cycle.overall,label=`الجلسة ${i+1}`;
+  const rate=r.sufficient?`${r.per28} يوم / 28`:'غير كافٍ';
+  const severe=r.meanSeverity===null?'—':r.meanSeverity+'%';
+  const status=r.sufficient?'صالح للمقارنة':`البيانات ${r.logged}/${r.dayCount} يوم`;
+  return `<tr><td><button class="botox-link" data-botox-focus="${E(cycle.session.id)}">${E(label)}<small>${E(fmtShort(cycle.start))}</small></button></td><td>${E(rate)}</td><td>${r.migraine}</td><td>${r.acute}</td><td>${severe}<small>${E(status)}</small></td></tr>`;
+ }).join(''):'';
+ const comparisonNote=cycles.length>1&&cycles.at(-1).overall.sufficient&&cycles.at(-2).overall.sufficient?(()=>{
+  const latest=cycles.at(-1).overall,prev=cycles.at(-2).overall,difference=Math.round((latest.per28-prev.per28)*10)/10;
+  return `الفرق عن الدورة السابقة: ${difference===0?'دون تغير':difference>0?'زيادة '+difference:'انخفاض '+Math.abs(difference)} يوم صداع أو شقيقة لكل 28 يومًا. هذا لا يثبت أن البوتوكس هو السبب.`;
+ })():'المقارنة الموضوعية بين الجلسات تحتاج دورتين على الأقل مع تسجيلات كافية. يمكن عرض الأرقام حتى لو لم تكتمل المقارنة.';
+ const details=latest?`<div class="panel" id="botox-current"><h3>تغيّر الأعراض خلال آخر دورة</h3><p class="mini">من ${E(fmtDay(latest.start))} إلى ${E(fmtDay(plusDays(latest.end,-1)))}. معدل أيام الصداع والشقيقة موحّد لكل 28 يومًا للمقارنة العادلة بين الأشهر.</p><div class="botox-months">${latest.months.map(botoxMonthHtml).join('')}${latest.late?`<div class="info">توجد فترة بين الموعد المتوقع والجلسة التالية؛ فيها ${latest.late.head} يوم صداع/شقيقة، وتُعرض منفصلة عن الأشهر الثلاثة الأساسية.</div>`:''}</div><div class="botox-trend">${E(botoxTrend(latest))}</div></div><div class="panel"><h3>تطور الصداع أسبوعيًا بعد الجلسة</h3>${botoxWeeklySvg(latest)}</div>`:'';
+ const past=sessions.length?`<div class="panel"><h3>سجل الجلسات</h3>${[...sessions].reverse().map((s,i)=>`<div class="kv"><div><strong>${E(fmtDay(recordDate(s)))}</strong><small style="display:block">${E(s.dose||'الجرعة غير مسجلة')}</small></div><button class="btn ghost small" data-open="${E(s.id)}">تعديل</button></div>`).join('')}</div>`:'';
+ return `<div class="view-title"><div><h1>✣ متابعة البوتوكس</h1><span class="sub">صفحة مستقلة للعلاج الوقائي · دورة كل 3 أشهر تقويمية</span></div></div><div class="panel botox-main"><div class="botox-last"><div><small>آخر جلسة مسجلة</small><strong>${last?E(fmtDay(recordDate(last))):'—'}</strong></div><button class="btn secondary small" data-botox-add="1">+ تسجيل جلسة</button></div>${reminder}${appointment}</div>${sessions.length?`<div class="panel"><h3>مقارنة الاستجابة بين الجلسات</h3><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الجلسة</th><th>الصداع/الشقيقة</th><th>أيام الشقيقة</th><th>أيام دواء النوبات</th><th>متوسط أعلى شدة</th></tr></thead><tbody>${comparisons}</tbody></table></div><p class="mini">أيام الشقيقة وأيام استخدام الأدوية المعروضة هي الأعداد المسجلة خلال كل دورة، وقد تكون الدورة الحالية غير مكتملة.</p><p class="info">${E(comparisonNote)}</p></div>${details}${past}`:''}<div class="panel soft"><h3>كيف نقرأ النتيجة؟</h3><p class="info">نقارن الأيام المسجلة للشقيقة والصداع، وأيام أدوية النوبات، ومتوسط أعلى شدة يومية. إذا ما سجلت صداعًا في يوم تتم متابعته فاليوم سليم حسب إعداداتك، لكن لا نملأ فجوات الأشهر التاريخية بصفر. لا نعرض معدلًا موثوقًا إذا كانت الأيام المكتملة أقل من 14 أو نشاط التسجيل في أقل من نصفها. التراجع قرب موعد الجلسة احتمال يُناقَش مع الطبيب، وليس تشخيصًا آليًا.</p><p class="mini">موعد الأشهر الثلاثة تقويمي للتذكير في التطبيق، بينما توقيت العلاج الفعلي والجرعة يحددهما طبيبك.</p></div>`;
+}
+function exportBotoxCalendar(){
+ const last=botoxSessions().at(-1);if(!last){toast('سجّل جلسة البوتوكس أولًا');return}
+ const {date}=botoxNext(last);if(date<localDate(now())){toast('هذا الموعد مضى؛ سجل الجلسة الجديدة أو عدّل الموعد أولاً');return}
+ const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+ const start=date.replace(/-/g,''),end=plusDays(date,1).replace(/-/g,'');
+ const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Yawmi//Botox Reminder//AR','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:botox-'+last.id+'@yawmi.local','DTSTAMP:'+stamp,'DTSTART;VALUE=DATE:'+start,'DTEND;VALUE=DATE:'+end,'SUMMARY:موعد جلسة البوتوكس - تذكير يومي','DESCRIPTION:موعد جلسة البوتوكس في يومي. يرجى تأكيده مع الطبيب.'];
+ for(const d of [30,14,7])lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:تبقى '+d+' يوماً على موعد البوتوكس','TRIGGER:-P'+d+'D','END:VALARM');
+ lines.push('END:VEVENT','END:VCALENDAR');output(`yawmi-botox-${date}.ics`,lines.join('\r\n')+'\r\n','text/calendar;charset=utf-8');toast('تم تجهيز ملف التقويم؛ افتحه وأضف الحدث في التقويم');
+}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.18 (صفحة متابعة البوتوكس)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 // Keep per-tab vertical position, open <details>, and horizontal chart position.
 // A rerender (filters, records, tab changes) must not silently collapse panels.
 const viewMemory={renderedTab:null,tabs:Object.create(null),generation:0};
@@ -588,8 +733,9 @@ function snapshotView(){
 function render(){
  snapshotView();
  const target=app.tab,state=viewMemory.tabs[target];
- view.innerHTML=target==='today'?renderToday():target==='history'?renderHistory():target==='analytics'?renderAnalytics():renderSettings();
+ view.innerHTML=target==='today'?renderToday():target==='history'?renderHistory():target==='analytics'?renderAnalytics():target==='botox'?renderBotox():renderSettings();
  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===target));
+ document.querySelectorAll('.botox-top-btn').forEach(b=>b.classList.toggle('is-active',target==='botox'));
  if(state?.details){const all=view.querySelectorAll('details');for(const d of state.details){if(all[d.i])all[d.i].open=d.open}}
  const chart=target==='analytics'?view.querySelector('.severity-scroll'):null;
  if(chart&&app.severityView==='normal')chart.scrollLeft=state?.chartX??chart.scrollWidth;
@@ -701,6 +847,13 @@ function bind(){
  document.addEventListener('click',async e=>{
   const go=e.target.closest('[data-go]');if(go){setTab(go.dataset.go);return}
   if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('[data-botox-add]')){manualEntry('botox');return}
+  if(e.target.closest('[data-botox-calendar]')){exportBotoxCalendar();return}
+  if(e.target.closest('[data-botox-reset]')){
+   app.settings.botoxAppointment='';app.settings.botoxAppointmentFor='';
+   await store.setMeta('settings',app.settings);render();toast('تم اعتماد الموعد التقديري');return;
+  }
+  const focus=e.target.closest('[data-botox-focus]');if(focus){view.querySelector('#botox-current')?.scrollIntoView({behavior:'smooth'});return}
   const quickMed=e.target.closest('[data-quick-med]');if(quickMed){saveQuickMed(quickMed.dataset.quickMed);return}
    const quick=e.target.closest('[data-quick]');if(quick){quickAction(quick.dataset.quick);return}
   const edit=e.target.closest('[data-open]');if(edit){openEvent(edit.dataset.open);return}
@@ -742,6 +895,15 @@ function bind(){
   if(e.target.closest('[data-pick-image]')){$('#image-picker').click();return}
   if(e.target.closest('[data-report]')){doctorReport();return}
   if(e.target.closest('[data-save-settings]')){const cup=+$('#cup-setting').value,bottle=+$('#bottle-setting').value;if(cup<=0||bottle<=0){toast('حدد كمية أكبر من صفر');return}app.settings.waterCup=cup;app.settings.waterBottle=bottle;await store.setMeta('settings',app.settings);render();toast('تم حفظ الأحجام');return}
+ });
+ document.addEventListener('submit',async e=>{
+  if(e.target.id!=='botox-appointment')return;
+  e.preventDefault();
+  const last=botoxSessions().at(-1);if(!last)return;
+  const date=e.target.elements.appointment.value;
+  if(!/^\d{4}-\d\d-\d\d$/.test(date)||date<recordDate(last)){toast('اختر موعدًا صحيحًا بعد آخر جلسة');return}
+  app.settings.botoxAppointment=date;app.settings.botoxAppointmentFor=last.id;
+  await store.setMeta('settings',app.settings);render();toast('حُفظ الموعد في هذا الجهاز');
  });
  document.addEventListener('change',e=>{
    if(e.target.id!=='analysis-start'&&e.target.id!=='analysis-end')return;
