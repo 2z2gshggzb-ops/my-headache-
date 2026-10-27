@@ -119,3 +119,49 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .botox-table td small{display:block;font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px}
 .botox-link{border:0;background:none;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit;text-align:right;padding:0}
 @media(max-width:380px){.botox-appointment .btn{font-size:11px}.botox-next strong{font-size:18px}}
+
+
+/* v1.8.12 medication response: three-category, high-contrast, mobile-friendly */
+.medicine-panel .med-legend{display:flex;flex-wrap:wrap;gap:8px 13px;font-size:11px;margin:12px 0;color:var(--ink)}
+.med-dot{width:11px;height:11px;border-radius:4px;display:inline-block;vertical-align:middle;margin-inline-end:4px}
+.med-full{background:#218468}.med-partial{background:#c08a19}.med-none{background:#bd4a4a}
+.medicine-row{padding:14px 0;border-top:1px solid var(--line)}
+.medicine-row:first-of-type{border-top:0}
+.med-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.med-head strong{font-size:14px}.med-head small{font-size:11px;color:var(--muted)}
+.med-stacked-chart{display:flex;direction:ltr;width:100%;height:24px;border-radius:9px;overflow:hidden;background:var(--surface2);margin-top:11px;gap:2px}
+.med-stacked-chart>span{height:100%;min-width:2px}.med-stacked-empty{background:var(--surface2);font-size:11px;color:var(--muted);border-radius:9px;padding:11px;margin-top:11px}
+.med-stat-grid{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;font-size:11px;font-weight:650;margin:9px 0}
+.med-text-full{color:#218468}.med-text-partial{color:#b58110}.med-text-none{color:#bd4a4a}.med-pending{color:var(--muted)}
+.med-dose-details{margin-top:10px}.med-dose-details summary{font-size:12px;cursor:pointer;color:var(--ink);font-weight:600}
+.med-dose-entry{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11px;line-height:1.5}
+.med-dose-entry:last-child{border:0}.med-dose-entry>b{text-align:left}
+
+
+/* v1.8.19: restore medication-response presentation omitted in the last update. */
+.medicine-panel{min-width:0;overflow-wrap:anywhere}
+.medicine-panel .med-legend{gap:8px 13px;line-height:1.7}
+.medicine-panel .medicine-row{display:block;min-width:0;overflow-wrap:anywhere}
+.medicine-panel .med-head{flex-wrap:wrap;align-items:baseline;row-gap:3px}
+.medicine-panel .med-head strong{font-size:15px;direction:auto;unicode-bidi:plaintext}
+.medicine-panel .med-head small{display:block;flex-shrink:0;line-height:1.6}
+.medicine-panel .med-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:7px;margin-top:11px}
+.medicine-panel .med-stat-grid span{display:block;font-size:11px;line-height:1.55;min-width:0;text-align:center;padding:5px 2px;border-radius:7px;background:var(--surface2)}
+.medicine-panel .medicine-row>.mini{font-size:11px;line-height:1.8;margin:8px 0}
+.medicine-panel .med-dose-entry{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:10px;line-height:1.7}
+.medicine-panel .med-dose-entry>b{text-align:start;overflow-wrap:anywhere}
+.medicine-panel .med-dose-entry>span{min-width:0;direction:rtl}
+.medicine-panel .med-dose-details summary{list-style:revert;line-height:1.8}
+@media(max-width:360px){.medicine-panel .med-stat-grid{gap:4px}.medicine-panel .med-stat-grid span{font-size:10px}}
+
+/* 12-month Botox trend: a red marker is the real injection day. */
+.botox-annual-panel{min-width:0}
+.botox-annual-plot{width:100%;overflow:hidden;margin:10px 0 2px}
+.botox-annual-plot svg{display:block;max-width:100%;height:auto;overflow:visible}
+.botox-chart-legend{display:flex;flex-wrap:wrap;gap:9px 13px;align-items:center;font-size:11px;line-height:1.7;color:var(--muted);margin:10px 0}
+.botox-chart-legend>span{display:inline-flex;gap:5px;align-items:center}
+.botox-chart-dot,.botox-chart-teal{width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#d64b4b}
+.botox-chart-teal{background:var(--accent)}
+.botox-trend-audit{margin-top:13px;border:1px solid var(--line);border-radius:11px;padding:10px}
+.botox-trend-audit summary{font-size:12px;font-weight:700;cursor:pointer}
+.botox-trend-audit .botox-table{min-width:460px}
