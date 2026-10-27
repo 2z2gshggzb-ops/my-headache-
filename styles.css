@@ -165,3 +165,15 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .botox-trend-audit{margin-top:13px;border:1px solid var(--line);border-radius:11px;padding:10px}
 .botox-trend-audit summary{font-size:12px;font-weight:700;cursor:pointer}
 .botox-trend-audit .botox-table{min-width:460px}
+
+/* v1.8.20: restore the original v1.8.9 risk highlight and water layout without touching analytics. */
+/* v1.8.9 only: careful risk highlighting and separate water look-back cards. */
+:root{--risk:#b4383f;--risk-border:#cf6268}
+:root[data-theme=dark]{--risk:#ff868a;--risk-border:#dc7479}
+.risk-emphasis{border:2px solid var(--risk-border)!important;border-radius:12px}
+.compare-half.risk-emphasis>strong,.insight.risk-emphasis .insight-top strong,.water24-summary.risk-emphasis>strong{color:var(--risk)}
+.compare-half.risk-emphasis .compare-track span,.insight.risk-emphasis .insight-track span{background:var(--risk)}
+.water24-summary{display:flex;align-items:center;gap:11px;background:var(--surface2);border-radius:12px;padding:12px;margin:11px 0}
+.water24-summary>strong{font-size:28px;color:var(--accent);flex-shrink:0;font-variant-numeric:tabular-nums}
+.water24-summary b{font-size:13px;display:block}.water24-summary small{font-size:11px;color:var(--muted);display:block;line-height:1.6;margin-top:3px}
+.water24-panel{border-style:solid}.water24-lower .compare-half>span{min-height:36px}
