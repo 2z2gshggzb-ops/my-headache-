@@ -1,4 +1,4 @@
-const CACHE='daily-health-v1.8.20-red-insights-restore';
+const CACHE='daily-health-v1.8.21-botox-trend-select';
 const CORE=['./','./index.html','./styles.css','./app.js','./storage.js','./ocr.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('daily-health-')&&k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});

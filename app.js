@@ -19,7 +19,7 @@ const icons={water:'◉',coffee:'♨',food:'▤',sleep:'☾',med:'✚',headache:
 const types={water:'ماء',coffee:'قهوة أو مشروب',food:'وجبة',sleep:'نوم',med:'دواء',headache:'أعراض الرأس',clear:'يوم بدون أعراض',note:'ملاحظة',botox:'علاج وقائي'};
 const spots={A:'بين الحاجبين',BR:'الحاجب الأيمن',BL:'الحاجب الأيسر',C:'أعلى منتصف الرأس',F:'منتصف الجبهة',O:'مكان آخر'};
 const kinds={heavy:'ثقل خفيف',headache:'صداع',migraine:'شقيقة',unknown:'غير محدد'};
-const app={lastWaterTap:{ml:0,time:0},lastQuickTap:{kind:'',time:0},records:[],tab:'today',date:localDate(now()),month:localDate(now()).slice(0,7),period:30,customStart:'',customEnd:'',analysisMode:'headache_only',severityView:'fit',settings:{theme:'system',waterCup:200,waterBottle:330,lastBackup:null},previewImage:null,editing:null,undo:null,filter:'all',search:'',toastTimer:null,ocrRunning:false};
+const app={lastWaterTap:{ml:0,time:0},lastQuickTap:{kind:'',time:0},records:[],tab:'today',date:localDate(now()),month:localDate(now()).slice(0,7),period:30,customStart:'',customEnd:'',analysisMode:'headache_only',severityView:'fit',botoxTrendScope:'12m',settings:{theme:'system',waterCup:200,waterBottle:330,lastBackup:null},previewImage:null,editing:null,undo:null,filter:'all',search:'',toastTimer:null,ocrRunning:false};
 const view=$('#view'),layer=$('#modal-layer');
 function theme(){const t=app.settings.theme;document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;$('#theme-btn').textContent=document.documentElement.dataset.theme==='dark'?'☼':'☾'}
 function recordDate(r){return r.type==='sleep'?(r.sleepDate||localDate(r.at)):localDate(r.at)}
@@ -642,82 +642,108 @@ function botoxCycle(session,nextSession=null){
  const overall=botoxInterval(start,end);
  return {session,nextSession,start,end,expected,months,late,overall};
 }
-// Latest 12 calendar months. Every 30-day window is anchored to the most recent
-// actual injection date, restarting on a new injection (not on the first of a month).
-// We also anchor backwards from the first known injection when charting pre-dose days.
-function botoxRollingWindows(today=localDate(now())){
- const cutoff=shiftedCalendarMonths(today,-12), all=botoxSessions().map(recordDate);
- const injections=[...new Set(all)].filter(d=>d>=cutoff&&d<=today).sort();
- const previous=[...new Set(all)].filter(d=>d<cutoff).at(-1);
+// The comparison can cover the latest 12 calendar months, all recorded
+// injections, or any number of most recent actual injections. Thirty-day
+// windows start at an injection, reset at the next injection, and retain
+// historical gaps as missing rather than inventing headache-free days.
+function botoxRollingWindows(today=localDate(now()),scope=app.botoxTrendScope){
+ const all=[...new Set(botoxSessions().map(recordDate))].filter(d=>d<=today).sort();
+ const requested=String(scope||'12m');
+ const amount=/^last-(\d+)$/.exec(requested);
+ const cutoff=amount&&all.length?all[Math.max(0,all.length-Math.max(1,+amount[1]))]:
+  requested==='all'&&all.length?all[0]:shiftedCalendarMonths(today,-12);
+ const injections=all.filter(d=>d>=cutoff);
+ const previous=all.filter(d=>d<cutoff).at(-1);
+ // Before the first known injection, align backward in 30-day increments.
  let anchor=previous||injections[0]||cutoff;
  const ranges=[];let cursor=cutoff,stop=today;
- for(let guard=0;cursor<stop&&guard<90;guard++){
-  const doseAt=injections.find(d=>d===cursor);
-  if(doseAt)anchor=doseAt;
+ const maxIterations=Math.max(90,Math.ceil(Math.max(0,daysBetween(cutoff,stop))/7)+10);
+ for(let guard=0;cursor<stop&&guard<maxIterations;guard++){
+  if(injections.includes(cursor))anchor=cursor;
   const nextShot=injections.find(d=>d>cursor);
-  const intervalStep=Math.floor(daysBetween(anchor,cursor)/30)+1;
-  const naturalEnd=plusDays(anchor,intervalStep*30);
-  let end=[naturalEnd,nextShot||stop,stop].sort()[0];
+  const nextBoundary=plusDays(anchor,(Math.floor(daysBetween(anchor,cursor)/30)+1)*30);
+  let end=[nextBoundary,nextShot||stop,stop].sort()[0];
   if(end<=cursor)end=plusDays(cursor,1);
   const facts=botoxInterval(cursor,end);
-  const injectionsHere=injections.filter(d=>d>=cursor&&d<end);
-  // Do not mistake the absence of records in an old, unmonitored period
-  // for 30 headache-free days. Partial coverage remains visibly incomplete.
-  const monitored=facts.dayCount>=14&&facts.logged>=Math.ceil(facts.dayCount*.5);
   const fullThirty=daysBetween(cursor,end)===30;
+  const monitored=facts.dayCount>=14&&facts.logged>=Math.ceil(facts.dayCount*.5);
   ranges.push({...facts,rawDays:daysBetween(cursor,end),monitored,
-    fullThirty,partial:!fullThirty,shots:injectionsHere});
+    fullThirty,partial:!fullThirty,shots:injections.filter(d=>d>=cursor&&d<end)});
   cursor=end;
  }
- return {cutoff,now:today,windows:ranges,shots:injections};
+ return {cutoff,now:today,windows:ranges,shots:injections,scope:requested};
+}
+function botoxTrendScopeControls(){
+ const total=[...new Set(botoxSessions().map(recordDate))].length;
+ const options=[['12m','آخر 12 شهرًا']];
+ for(let n=1;n<=total;n++)options.push([`last-${n}`,n===1?'آخر جرعة':n===2?'آخر جرعتين':`آخر ${n} جرعات`]);
+ if(total)options.push(['all','كل الجرعات المسجلة']);
+ if(!options.some(([v])=>v===app.botoxTrendScope))app.botoxTrendScope='12m';
+ return `<div class="botox-trend-filter"><label for="botox-trend-scope">الفترة المعروضة</label><select id="botox-trend-scope" aria-label="اختر عدد جرعات البوتوكس المعروضة">${options.map(([value,title])=>`<option value="${E(value)}" ${value===app.botoxTrendScope?'selected':''}>${E(title)}</option>`).join('')}</select></div>`;
 }
 function botoxAnnualSvg(){
  const model=botoxRollingWindows(),windows=model.windows;
- if(!windows.length)return '<p class="empty">لا توجد فترة مكتملة للرسم بعد.</p>';
- const valid=windows.filter(w=>w.monitored);
- const maxValue=Math.max(5,...valid.map(w=>w.head));
+ const controls=botoxTrendScopeControls();
+ if(!windows.length)return controls+'<p class="empty">لا توجد فترة مكتملة للرسم بعد.</p>';
+ const reliable=windows.filter(w=>w.monitored&&w.fullThirty);
+ const displayed=windows.filter(w=>(w.monitored||w.head>0));
+ const maxValue=Math.max(5,...displayed.map(w=>w.head));
  const ceiling=Math.ceil(maxValue/5)*5;
- const W=640,H=256,L=37,R=14,T=42,B=69,PW=W-L-R,PH=H-T-B;
+ // Keep labels readable on iPhones; long ranges scroll horizontally.
+ const W=Math.max(455,windows.length*43+62),H=270,L=37,R=15,T=43,B=64,PW=W-L-R,PH=H-T-B;
  const time0=utcDay(model.cutoff),span=Math.max(1,daysBetween(model.cutoff,model.now)),
   xDate=d=>L+(utcDay(d)-time0)/86400000/span*PW,
   x=w=>(xDate(w.start)+xDate(w.end))/2,
   y=v=>T+PH-PH*Math.min(ceiling,v)/ceiling;
  const grid=[0,1,2,3,4].map(k=>{const v=Math.round(ceiling*k/4);
-  return `<line x1="${L}" x2="${W-R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/><text x="${L-8}" y="${(y(v)+4).toFixed(1)}" text-anchor="end" fill="var(--muted)" font-size="11">${v}</text>`;
+  return `<line x1="${L}" x2="${W-R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/><text x="${L-8}" y="${(y(v)+4).toFixed(1)}" text-anchor="end" fill="var(--muted)" font-size="12">${v}</text>`;
  }).join('');
- const chartPoints=windows.map((w,i)=>({...w,i,xx:x(w),yy:y(w.head)}));
+ const points=windows.map((w,i)=>({...w,i,xx:x(w),yy:y(w.head),trusted:w.monitored&&w.fullThirty}));
  const connected=[];
- for(let i=1;i<chartPoints.length;i++){
-  const a=chartPoints[i-1],b=chartPoints[i];
-  // Never bridge unknown periods or pretend that a partial 30-day period is a
-  // fully comparable 30-day count.
-  if(a.monitored&&a.fullThirty&&b.monitored&&b.fullThirty){
-   connected.push(`<line x1="${a.xx.toFixed(1)}" y1="${a.yy.toFixed(1)}" x2="${b.xx.toFixed(1)}" y2="${b.yy.toFixed(1)}" stroke="var(--accent)" stroke-width="2.8" stroke-linecap="round"/>`);
+ // Solid continuous trend ONLY between consecutive comparable 30-day windows.
+ for(let i=1;i<points.length;i++){
+  const a=points[i-1],b=points[i];
+  if(a.trusted&&b.trusted){
+   connected.push(`<line class="botox-trend-segment" x1="${a.xx.toFixed(1)}" y1="${a.yy.toFixed(1)}" x2="${b.xx.toFixed(1)}" y2="${b.yy.toFixed(1)}" stroke="var(--accent)" stroke-width="3.6" stroke-linecap="round"/>`);
+  }else if((a.trusted||a.head>0)&&(b.trusted||b.head>0)){
+   // The user can see how successive recorded points change, but a dashed
+   // connector explicitly warns that at least one count is incomplete.
+   connected.push(`<line class="botox-trend-uncertain" x1="${a.xx.toFixed(1)}" y1="${a.yy.toFixed(1)}" x2="${b.xx.toFixed(1)}" y2="${b.yy.toFixed(1)}" stroke="var(--accent)" stroke-opacity=".55" stroke-width="2.3" stroke-dasharray="3 5" stroke-linecap="round"/>`);
   }
  }
- const dots=chartPoints.map(p=>{
-  const label=`${p.start} إلى ${plusDays(p.end,-1)}: ${p.head} يوم صداع/شقيقة مسجّل، ${p.logged} يوم فيه تسجيل من ${p.dayCount} يوم مكتمل${p.partial?'، فترة أقصر من 30 يومًا':''}`;
-  // A gap is NOT a zero. Display a hollow point only if at least one
-  // symptomatic day was actually documented in an insufficiently observed bin.
+ // A new injection may interrupt a 30-day window by 1–7 days.
+ // Link the two complete windows on either side with a DASHED connector,
+ // not an invented data point; never bridge historic periods with no diary.
+ for(let i=0;i<points.length-2;i++){
+  const a=points[i],gap=points[i+1],b=points[i+2];
+  const shortDoseRemainder=gap.partial&&gap.rawDays<=7&&gap.head===0&&
+     model.shots.some(d=>d===gap.end);
+  if(a.trusted&&b.trusted&&shortDoseRemainder){
+   connected.push(`<line class="botox-trend-bridge" x1="${a.xx.toFixed(1)}" y1="${a.yy.toFixed(1)}" x2="${b.xx.toFixed(1)}" y2="${b.yy.toFixed(1)}" stroke="var(--accent)" stroke-opacity=".6" stroke-width="2.6" stroke-dasharray="5 5" stroke-linecap="round"><title>ربط توضيحي بين فترتين مكتملتين عبر أيام قصيرة فصلتها جلسة بوتوكس؛ لا توجد قيمة مقاسة للفاصل</title></line>`);
+  }
+ }
+ const dots=points.map(p=>{
   if(!p.monitored&&p.head===0)return '';
-  const trustworthy=p.monitored&&p.fullThirty;
-  return `<g><circle cx="${p.xx.toFixed(1)}" cy="${p.yy.toFixed(1)}" r="${trustworthy?4.7:4.2}" fill="${trustworthy?'var(--accent)':'var(--surface)'}" stroke="${trustworthy?'var(--accent)':'var(--muted)'}" stroke-width="2"><title>${E(label)}${trustworthy?'':'، عرض جزئي لا يصلح للمقارنة'}</title></circle><text x="${p.xx.toFixed(1)}" y="${(p.yy-10).toFixed(1)}" fill="${trustworthy?'var(--ink)':'var(--muted)'}" font-size="11" text-anchor="middle" font-weight="600">${p.head}${trustworthy?'':'*'}</text></g>`;
+  const title=`${p.start} إلى ${plusDays(p.end,-1)}: ${p.head} يوم صداع/شقيقة مسجّل، ${p.logged} يوم فيه تسجيل من ${p.dayCount} يوم مكتمل${p.partial?'، فترة أقل من 30 يومًا':''}`;
+  return `<g class="botox-trend-point"><circle cx="${p.xx.toFixed(1)}" cy="${p.yy.toFixed(1)}" r="${p.trusted?5.1:4.7}" fill="${p.trusted?'var(--accent)':'var(--surface)'}" stroke="${p.trusted?'var(--accent)':'var(--muted)'}" stroke-width="2"><title>${E(title)}${p.trusted?'':'، عدد جزئي لا يصلح للمقارنة'}</title></circle><text x="${p.xx.toFixed(1)}" y="${(p.yy-11).toFixed(1)}" fill="${p.trusted?'var(--ink)':'var(--muted)'}" font-size="12" text-anchor="middle" font-weight="700">${p.head}${p.trusted?'':'*'}</text></g>`;
  }).join('');
  const marks=model.shots.map(d=>{
   const xx=xDate(d);
-  return `<g class="botox-injection-mark"><line x1="${xx.toFixed(1)}" y1="${T-2}" x2="${xx.toFixed(1)}" y2="${H-B+2}" stroke="#d64b4b" stroke-dasharray="4 4" stroke-width="1.5" stroke-opacity=".85"/><circle cx="${xx.toFixed(1)}" cy="${T-14}" r="5.3" fill="#d64b4b" stroke="var(--surface)" stroke-width="2"><title>جلسة بوتوكس: ${E(d)}</title></circle></g>`;
+  return `<g class="botox-injection-mark"><line x1="${xx.toFixed(1)}" y1="${T-2}" x2="${xx.toFixed(1)}" y2="${H-B+2}" stroke="#d64b4b" stroke-dasharray="4 4" stroke-width="1.6" stroke-opacity=".82"/><circle cx="${xx.toFixed(1)}" cy="${T-13}" r="5.8" fill="#d64b4b" stroke="var(--surface)" stroke-width="2"><title>جلسة بوتوكس: ${E(d)}</title></circle></g>`;
  }).join('');
- // Each interval gets a lower date label; reduce overlaps when there are many
- // especially short windows due to off-schedule sessions.
- const dates=chartPoints.map((p,i)=>{
-  if(chartPoints.length>17&&i%2===1&&i!==chartPoints.length-1)return '';
-  return `<text x="${p.xx.toFixed(1)}" y="${H-36}" fill="var(--muted)" font-size="9" text-anchor="middle">${E(p.start.slice(5).replace('-','/'))}</text>`;
+ let lastLabelX=-100;
+ const dates=points.map(p=>{
+  const displayedWidth=points.length<=16?Math.max(290,Math.min(window.innerWidth-70,600)):W;
+  const labelGap=38*Math.max(1,W/displayedWidth);
+  if(p.xx-lastLabelX<labelGap)return '';
+  lastLabelX=p.xx;
+  return `<text x="${p.xx.toFixed(1)}" y="${H-33}" fill="var(--muted)" font-size="11" text-anchor="middle">${E(p.start.slice(5).replace('-','/'))}</text>`;
  }).join('');
- const status=valid.filter(w=>w.fullThirty).length;
- const shotLegend=`<div class="botox-chart-legend"><span><i class="botox-chart-dot"></i>يوم البوتوكس</span><span><i class="botox-chart-teal"></i>أيام الصداع لكل 30 يومًا</span><span>* عدد مسجّل في فترة ناقصة، والفجوة تعني بيانات غير كافية</span></div>`;
- const inWindow=model.shots.length?`${model.shots.length} جلسة بوتوكس مسجّلة خلال آخر 12 شهرًا`:'لا توجد جلسة بوتوكس مسجّلة داخل آخر 12 شهرًا';
+ const status=reliable.length;
+ const shotLegend=`<div class="botox-chart-legend"><span><i class="botox-chart-dot"></i>تاريخ جرعة البوتوكس</span><span><i class="botox-chart-teal"></i>اتجاه أيام الصداع لكل 30 يومًا</span><span>* فترة جزئية؛ لا نصل فترات المتابعة المفقودة بخط يوحي بوجود بيانات</span></div>`;
+ const rangeText=model.scope==='12m'?'آخر 12 شهرًا':model.scope==='all'?'من أول جلسة مسجلة':Number(model.scope.slice(5))===1?'من آخر جرعة':Number(model.scope.slice(5))===2?'من آخر جرعتين':`من تاريخ أقدم جلسة ضمن آخر ${Number(model.scope.slice(5))} جرعات`;
  const table=windows.map(w=>`<tr><td dir="ltr">${E(fmtShort(w.start))} – ${E(fmtShort(plusDays(w.end,-1)))}</td><td>${w.head}</td><td>${w.monitored?(w.fullThirty?'30 يومًا':'جزئية ('+w.dayCount+' يومًا)'):'بيانات غير كافية'}</td></tr>`).join('');
- return `<p class="mini">آخر 12 شهرًا: من ${E(fmtShort(model.cutoff))} إلى ${E(fmtShort(model.now))}. كل فترة تبدأ من تاريخ آخر حقنة فعلية وتمتد 30 يومًا، وتبدأ فترة جديدة عند الجرعة التالية. ${E(inWindow)}.</p>${shotLegend}<div class="botox-annual-plot"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="رسم آخر 12 شهرًا لأيام الصداع كل 30 يومًا، مع علامات حمراء على جلسات البوتوكس">${grid}${connected.join('')}${dots}${marks}${dates}<text x="${W/2}" y="${H-12}" text-anchor="middle" fill="var(--muted)" font-size="11">بداية فترة الـ30 يومًا (يوم/شهر)</text></svg></div><p class="mini">الأرقام عند النقاط هي عدد الأيام المسجّلة وليس عدد النوبات. النجمة (*) تعني عددًا جزئيًا، وليس معدلًا قابلًا للمقارنة. الفترات الأقصر من 30 يومًا لا نوصلها بخط اتجاه مضلّل. المتاح للمقارنة الآن: ${status} فترة مكتملة من 30 يومًا وذات بيانات كافية.</p><details class="botox-trend-audit"><summary>تفاصيل فترات الـ30 يومًا</summary><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الفترة</th><th>أيام الصداع</th><th>حالة البيانات</th></tr></thead><tbody>${table}</tbody></table></div></details><p class="mini">الفترات التاريخية التي لم تُتابَع بما يكفي لا تُعرض كصفر صداع. هذا التحليل وصفي ولا يثبت سبب التغير.</p>`;
+ return `${controls}<p class="mini">${E(rangeText)}: من ${E(fmtShort(model.cutoff))} إلى ${E(fmtShort(model.now))}. كل فترة 30 يومًا تبدأ من يوم الجرعة ويُعاد الحساب عند الجرعة التالية. عدد جلسات البوتوكس الظاهرة: ${model.shots.length}.</p>${shotLegend}<div class="botox-annual-plot" tabindex="0" aria-label="رسم اتجاه الصداع، يمكن سحبه أفقيًا عند عرض جلسات كثيرة"><svg viewBox="0 0 ${W} ${H}" style="width:${windows.length<=16?'100%':`max(100%, ${W}px)`}" role="img" aria-label="خط اتجاه عدد أيام الصداع لكل 30 يومًا مع علامات حمراء لتواريخ الحقن">${grid}${connected.join('')}${dots}${marks}${dates}<text x="${W/2}" y="${H-10}" text-anchor="middle" fill="var(--muted)" font-size="12">بداية فترة الـ30 يومًا (يوم/شهر)</text></svg></div><p class="mini">تظهر الفترة المختارة كاملة عند إمكانية عرضها بوضوح، ويمكن السحب يمينًا ويسارًا للفترات الطويلة. الخط المتصل يربط فترات 30 يومًا القابلة للمقارنة؛ والمتقطع يربط نقاطًا جزئية موثقة أو يتجاوز أيامًا قليلة فصلتها جرعة جديدة. لا نصل فترات بلا بيانات. عدد الفترات الكاملة ذات البيانات الكافية: ${status}.</p><details class="botox-trend-audit"><summary>تفاصيل فترات الـ30 يومًا</summary><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الفترة</th><th>أيام الصداع</th><th>حالة البيانات</th></tr></thead><tbody>${table}</tbody></table></div></details><p class="mini">الفترات التاريخية بلا تسجيلات كافية لا تُعرض كصفر صداع. هذا التحليل وصفي ولا يثبت سبب التغير.</p>`;
 }
 function botoxMonthHtml(m,i){
  const title=['الشهر الأول','الشهر الثاني','الشهر الثالث'][i];
@@ -756,7 +782,7 @@ function renderBotox(){
  })():'المقارنة الموضوعية بين الجلسات تحتاج دورتين على الأقل مع تسجيلات كافية. يمكن عرض الأرقام حتى لو لم تكتمل المقارنة.';
  const details=latest?`<div class="panel" id="botox-current"><h3>تغيّر الأعراض خلال آخر دورة</h3><p class="mini">من ${E(fmtDay(latest.start))} إلى ${E(fmtDay(plusDays(latest.end,-1)))}. معدل أيام الصداع والشقيقة موحّد لكل 28 يومًا للمقارنة العادلة بين الأشهر.</p><div class="botox-months">${latest.months.map(botoxMonthHtml).join('')}${latest.late?`<div class="info">توجد فترة بين الموعد المتوقع والجلسة التالية؛ فيها ${latest.late.head} يوم صداع/شقيقة، وتُعرض منفصلة عن الأشهر الثلاثة الأساسية.</div>`:''}</div><div class="botox-trend">${E(botoxTrend(latest))}</div></div>`:'';
  const past=sessions.length?`<div class="panel"><h3>سجل الجلسات</h3>${[...sessions].reverse().map((s,i)=>`<div class="kv"><div><strong>${E(fmtDay(recordDate(s)))}</strong><small style="display:block">${E(s.dose||'الجرعة غير مسجلة')}</small></div><button class="btn ghost small" data-open="${E(s.id)}">تعديل</button></div>`).join('')}</div>`:'';
- return `<div class="view-title"><div><h1>✣ متابعة البوتوكس</h1><span class="sub">صفحة مستقلة للعلاج الوقائي · دورة كل 3 أشهر تقويمية</span></div></div><div class="panel botox-main"><div class="botox-last"><div><small>آخر جلسة مسجلة</small><strong>${last?E(fmtDay(recordDate(last))):'—'}</strong></div><button class="btn secondary small" data-botox-add="1">+ تسجيل جلسة</button></div>${reminder}${appointment}</div>${sessions.length?`<div class="panel"><h3>مقارنة الاستجابة بين الجلسات</h3><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الجلسة</th><th>الصداع/الشقيقة</th><th>أيام الشقيقة</th><th>أيام دواء النوبات</th><th>متوسط أعلى شدة</th></tr></thead><tbody>${comparisons}</tbody></table></div><p class="mini">أيام الشقيقة وأيام استخدام الأدوية المعروضة هي الأعداد المسجلة خلال كل دورة، وقد تكون الدورة الحالية غير مكتملة.</p><p class="info">${E(comparisonNote)}</p></div>${sessions.length?`<div class="panel botox-annual-panel"><h3>اتجاه الصداع خلال آخر 12 شهرًا</h3>${botoxAnnualSvg()}</div>`:''}${details}${past}`:''}<div class="panel soft"><h3>كيف نقرأ النتيجة؟</h3><p class="info">نقارن الأيام المسجلة للشقيقة والصداع، وأيام أدوية النوبات، ومتوسط أعلى شدة يومية. إذا ما سجلت صداعًا في يوم تتم متابعته فاليوم سليم حسب إعداداتك، لكن لا نملأ فجوات الأشهر التاريخية بصفر. لا نعرض معدلًا موثوقًا إذا كانت الأيام المكتملة أقل من 14 أو نشاط التسجيل في أقل من نصفها. التراجع قرب موعد الجلسة احتمال يُناقَش مع الطبيب، وليس تشخيصًا آليًا.</p><p class="mini">موعد الأشهر الثلاثة تقويمي للتذكير في التطبيق، بينما توقيت العلاج الفعلي والجرعة يحددهما طبيبك.</p></div>`;
+ return `<div class="view-title"><div><h1>✣ متابعة البوتوكس</h1><span class="sub">صفحة مستقلة للعلاج الوقائي · دورة كل 3 أشهر تقويمية</span></div></div><div class="panel botox-main"><div class="botox-last"><div><small>آخر جلسة مسجلة</small><strong>${last?E(fmtDay(recordDate(last))):'—'}</strong></div><button class="btn secondary small" data-botox-add="1">+ تسجيل جلسة</button></div>${reminder}${appointment}</div>${sessions.length?`<div class="panel"><h3>مقارنة الاستجابة بين الجلسات</h3><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الجلسة</th><th>الصداع/الشقيقة</th><th>أيام الشقيقة</th><th>أيام دواء النوبات</th><th>متوسط أعلى شدة</th></tr></thead><tbody>${comparisons}</tbody></table></div><p class="mini">أيام الشقيقة وأيام استخدام الأدوية المعروضة هي الأعداد المسجلة خلال كل دورة، وقد تكون الدورة الحالية غير مكتملة.</p><p class="info">${E(comparisonNote)}</p></div>${sessions.length?`<div class="panel botox-annual-panel"><h3>اتجاه الصداع بعد جلسات البوتوكس</h3>${botoxAnnualSvg()}</div>`:''}${details}${past}`:''}<div class="panel soft"><h3>كيف نقرأ النتيجة؟</h3><p class="info">نقارن الأيام المسجلة للشقيقة والصداع، وأيام أدوية النوبات، ومتوسط أعلى شدة يومية. إذا ما سجلت صداعًا في يوم تتم متابعته فاليوم سليم حسب إعداداتك، لكن لا نملأ فجوات الأشهر التاريخية بصفر. لا نعرض معدلًا موثوقًا إذا كانت الأيام المكتملة أقل من 14 أو نشاط التسجيل في أقل من نصفها. التراجع قرب موعد الجلسة احتمال يُناقَش مع الطبيب، وليس تشخيصًا آليًا.</p><p class="mini">موعد الأشهر الثلاثة تقويمي للتذكير في التطبيق، بينما توقيت العلاج الفعلي والجرعة يحددهما طبيبك.</p></div>`;
 }
 function exportBotoxCalendar(){
  const last=botoxSessions().at(-1);if(!last){toast('سجّل جلسة البوتوكس أولًا');return}
@@ -767,7 +793,7 @@ function exportBotoxCalendar(){
  for(const d of [30,14,7])lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:تبقى '+d+' يوماً على موعد البوتوكس','TRIGGER:-P'+d+'D','END:VALARM');
  lines.push('END:VEVENT','END:VCALENDAR');output(`yawmi-botox-${date}.ics`,lines.join('\r\n')+'\r\n','text/calendar;charset=utf-8');toast('تم تجهيز ملف التقويم؛ افتحه وأضف الحدث في التقويم');
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.19 (رسم البوتوكس السنوي + إصلاح استجابة الدواء)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.21 (خط اتجاه البوتوكس + فلتر الجرعات)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 // Keep per-tab vertical position, open <details>, and horizontal chart position.
 // A rerender (filters, records, tab changes) must not silently collapse panels.
 const viewMemory={renderedTab:null,tabs:Object.create(null),generation:0};
@@ -955,6 +981,7 @@ function bind(){
   await store.setMeta('settings',app.settings);render();toast('حُفظ الموعد في هذا الجهاز');
  });
  document.addEventListener('change',e=>{
+   if(e.target.id==='botox-trend-scope'){app.botoxTrendScope=e.target.value;render();return}
    if(e.target.id!=='analysis-start'&&e.target.id!=='analysis-end')return;
    const start=(e.target.id==='analysis-start'?e.target.value:document.querySelector('#analysis-start')?.value)||'';
    const end=(e.target.id==='analysis-end'?e.target.value:document.querySelector('#analysis-end')?.value)||'';
