@@ -681,6 +681,20 @@ function botoxTrendScopeControls(){
  if(!options.some(([v])=>v===app.botoxTrendScope))app.botoxTrendScope='12m';
  return `<div class="botox-trend-filter"><label for="botox-trend-scope">الفترة المعروضة</label><select id="botox-trend-scope" aria-label="اختر عدد جرعات البوتوكس المعروضة">${options.map(([value,title])=>`<option value="${E(value)}" ${value===app.botoxTrendScope?'selected':''}>${E(title)}</option>`).join('')}</select></div>`;
 }
+// Monthly headache-DAY average for each injection-to-injection interval.
+// This intentionally matches the graph's unit (headache days, not independent
+// headache episodes). For the latest injection, only completed days to today
+// are included. Historic gaps never become assumed headache-free days.
+function botoxDoseAverages(model){
+ const visible=[...model.shots].sort();
+ return visible.map((start,i)=>{
+  const end=visible[i+1]||model.now;
+  const facts=botoxInterval(start,end);
+  const monthly=facts.sufficient&&facts.dayCount>=14
+   ?Math.round((facts.head/facts.dayCount)*300)/10:null;
+  return {start,end,...facts,monthly};
+ });
+}
 function botoxAnnualSvg(){
  const model=botoxRollingWindows(),windows=model.windows;
  const controls=botoxTrendScopeControls();
@@ -690,7 +704,7 @@ function botoxAnnualSvg(){
  const maxValue=Math.max(5,...displayed.map(w=>w.head));
  const ceiling=Math.ceil(maxValue/5)*5;
  // Keep labels readable on iPhones; long ranges scroll horizontally.
- const W=Math.max(455,windows.length*43+62),H=270,L=37,R=15,T=43,B=64,PW=W-L-R,PH=H-T-B;
+ const W=Math.max(455,windows.length*43+62,model.shots.length*128+62),H=324,L=37,R=15,T=99,B=64,PW=W-L-R,PH=H-T-B;
  const time0=utcDay(model.cutoff),span=Math.max(1,daysBetween(model.cutoff,model.now)),
   xDate=d=>L+(utcDay(d)-time0)/86400000/span*PW,
   x=w=>(xDate(w.start)+xDate(w.end))/2,
@@ -727,6 +741,21 @@ function botoxAnnualSvg(){
   const title=`${p.start} إلى ${plusDays(p.end,-1)}: ${p.head} يوم صداع/شقيقة مسجّل، ${p.logged} يوم فيه تسجيل من ${p.dayCount} يوم مكتمل${p.partial?'، فترة أقل من 30 يومًا':''}`;
   return `<g class="botox-trend-point"><circle cx="${p.xx.toFixed(1)}" cy="${p.yy.toFixed(1)}" r="${p.trusted?5.1:4.7}" fill="${p.trusted?'var(--accent)':'var(--surface)'}" stroke="${p.trusted?'var(--accent)':'var(--muted)'}" stroke-width="2"><title>${E(title)}${p.trusted?'':'، عدد جزئي لا يصلح للمقارنة'}</title></circle><text x="${p.xx.toFixed(1)}" y="${(p.yy-11).toFixed(1)}" fill="${p.trusted?'var(--ink)':'var(--muted)'}" font-size="12" text-anchor="middle" font-weight="700">${p.head}${p.trusted?'':'*'}</text></g>`;
  }).join('');
+ // One contextual average banner per actual Botox interval, positioned
+ // between the two red dose lines (or from the last dose to today).
+ // For a single selected injection this naturally fills the chart width.
+ const doseAverages=botoxDoseAverages(model);
+ const monthlyBanners=doseAverages.map(c=>{
+  const left=xDate(c.start),right=xDate(c.end),width=Math.max(0,right-left);
+  if(width<9)return ''; // A same-day/very short course cannot fit a banner.
+  const bx=left+3,bw=Math.max(1,width-6),cx=left+width/2;
+  const isNarrow=bw<96;
+  const value=c.monthly===null?'—':c.monthly.toFixed(1).replace(/\.0$/,'');
+  const summary=c.monthly===null?'بيانات غير كافية':`${value} يوم`;
+  const explanation=`${c.start} إلى ${plusDays(c.end,-1)}: ${c.head} يوم صداع/شقيقة، ${c.logged} يوم فيه تسجيل من ${c.dayCount} يوم مكتمل. ${c.monthly===null?'لا يمكن حساب متوسط شهري موثوق بعد.':`متوسط ${value} يوم صداع لكل 30 يومًا.`}`;
+  const firstLine=isNarrow?'متوسط':'المتوسط / 30 يوم';
+  return `<g class="botox-dose-average"><title>${E(explanation)}</title><rect x="${bx.toFixed(1)}" y="11" width="${bw.toFixed(1)}" height="58" rx="9" fill="var(--surface2)" stroke="var(--line)" stroke-width="1.2"/><text x="${cx.toFixed(1)}" y="30" font-size="${isNarrow?11:13}" font-weight="600" fill="var(--muted)" text-anchor="middle">${firstLine}</text><text x="${cx.toFixed(1)}" y="52" font-size="${c.monthly===null?(isNarrow?11:15):(isNarrow?16:20)}" font-weight="750" fill="${c.monthly===null?'var(--muted)':'var(--accent)'}" text-anchor="middle">${E(summary)}</text></g>`;
+ }).join('');
  const marks=model.shots.map(d=>{
   const xx=xDate(d);
   return `<g class="botox-injection-mark"><line x1="${xx.toFixed(1)}" y1="${T-2}" x2="${xx.toFixed(1)}" y2="${H-B+2}" stroke="#d64b4b" stroke-dasharray="4 4" stroke-width="1.6" stroke-opacity=".82"/><circle cx="${xx.toFixed(1)}" cy="${T-13}" r="5.8" fill="#d64b4b" stroke="var(--surface)" stroke-width="2"><title>جلسة بوتوكس: ${E(d)}</title></circle></g>`;
@@ -740,10 +769,11 @@ function botoxAnnualSvg(){
   return `<text x="${p.xx.toFixed(1)}" y="${H-33}" fill="var(--muted)" font-size="11" text-anchor="middle">${E(p.start.slice(5).replace('-','/'))}</text>`;
  }).join('');
  const status=reliable.length;
+ const averagesInfo=doseAverages.length?`<details class="botox-dose-average-details"><summary>متوسط كل دورة بالأرقام والتواريخ</summary><div class="botox-dose-average-summary" aria-label="ملخص متوسط أيام الصداع بين جرعات البوتوكس">${doseAverages.map(c=>{const value=c.monthly===null?'بيانات غير كافية':`${c.monthly.toFixed(1).replace(/\.0$/,'')} يوم/30 يوم`;return `<span><b>${E(fmtShort(c.start))}${c.end!==model.now?' – '+E(fmtShort(c.end)):' – اليوم'}:</b> ${E(value)}</span>`;}).join('')}</div></details>`:'';
  const shotLegend=`<div class="botox-chart-legend"><span><i class="botox-chart-dot"></i>تاريخ جرعة البوتوكس</span><span><i class="botox-chart-teal"></i>اتجاه أيام الصداع لكل 30 يومًا</span><span>* فترة جزئية؛ لا نصل فترات المتابعة المفقودة بخط يوحي بوجود بيانات</span></div>`;
  const rangeText=model.scope==='12m'?'آخر 12 شهرًا':model.scope==='all'?'من أول جلسة مسجلة':Number(model.scope.slice(5))===1?'من آخر جرعة':Number(model.scope.slice(5))===2?'من آخر جرعتين':`من تاريخ أقدم جلسة ضمن آخر ${Number(model.scope.slice(5))} جرعات`;
  const table=windows.map(w=>`<tr><td dir="ltr">${E(fmtShort(w.start))} – ${E(fmtShort(plusDays(w.end,-1)))}</td><td>${w.head}</td><td>${w.monitored?(w.fullThirty?'30 يومًا':'جزئية ('+w.dayCount+' يومًا)'):'بيانات غير كافية'}</td></tr>`).join('');
- return `${controls}<p class="mini">${E(rangeText)}: من ${E(fmtShort(model.cutoff))} إلى ${E(fmtShort(model.now))}. كل فترة 30 يومًا تبدأ من يوم الجرعة ويُعاد الحساب عند الجرعة التالية. عدد جلسات البوتوكس الظاهرة: ${model.shots.length}.</p>${shotLegend}<div class="botox-annual-plot" tabindex="0" aria-label="رسم اتجاه الصداع، يمكن سحبه أفقيًا عند عرض جلسات كثيرة"><svg viewBox="0 0 ${W} ${H}" style="width:${windows.length<=16?'100%':`max(100%, ${W}px)`}" role="img" aria-label="خط اتجاه عدد أيام الصداع لكل 30 يومًا مع علامات حمراء لتواريخ الحقن">${grid}${connected.join('')}${dots}${marks}${dates}<text x="${W/2}" y="${H-10}" text-anchor="middle" fill="var(--muted)" font-size="12">بداية فترة الـ30 يومًا (يوم/شهر)</text></svg></div><p class="mini">تظهر الفترة المختارة كاملة عند إمكانية عرضها بوضوح، ويمكن السحب يمينًا ويسارًا للفترات الطويلة. الخط المتصل يربط فترات 30 يومًا القابلة للمقارنة؛ والمتقطع يربط نقاطًا جزئية موثقة أو يتجاوز أيامًا قليلة فصلتها جرعة جديدة. لا نصل فترات بلا بيانات. عدد الفترات الكاملة ذات البيانات الكافية: ${status}.</p><details class="botox-trend-audit"><summary>تفاصيل فترات الـ30 يومًا</summary><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الفترة</th><th>أيام الصداع</th><th>حالة البيانات</th></tr></thead><tbody>${table}</tbody></table></div></details><p class="mini">الفترات التاريخية بلا تسجيلات كافية لا تُعرض كصفر صداع. هذا التحليل وصفي ولا يثبت سبب التغير.</p>`;
+ return `${controls}<p class="mini">${E(rangeText)}: من ${E(fmtShort(model.cutoff))} إلى ${E(fmtShort(model.now))}. كل فترة 30 يومًا تبدأ من يوم الجرعة ويُعاد الحساب عند الجرعة التالية. عدد جلسات البوتوكس الظاهرة: ${model.shots.length}.</p>${shotLegend}<div class="botox-annual-plot" tabindex="0" aria-label="رسم اتجاه الصداع، يمكن سحبه أفقيًا عند عرض جلسات كثيرة"><svg viewBox="0 0 ${W} ${H}" style="width:${windows.length<=16?'100%':`max(100%, ${W}px)`}" role="img" aria-label="خط اتجاه عدد أيام الصداع لكل 30 يومًا مع علامات حمراء لتواريخ الحقن">${grid}${connected.join('')}${dots}${marks}${monthlyBanners}${dates}<text x="${W/2}" y="${H-10}" text-anchor="middle" fill="var(--muted)" font-size="12">بداية فترة الـ30 يومًا (يوم/شهر)</text></svg></div>${averagesInfo}<p class="mini">المستطيل أعلى كل دورة يوضح متوسط <b>أيام الصداع لكل 30 يومًا</b> من تاريخ جرعة إلى الجرعة التالية (أو إلى اليوم إذا كانت آخر جرعة). هذا مقياس لأيام الصداع، وليس عدد النوبات المنفصلة. لا نعرض متوسطًا إذا كانت التغطية التاريخية غير كافية.</p><p class="mini">تظهر الفترة المختارة كاملة عند إمكانية عرضها بوضوح، ويمكن السحب يمينًا ويسارًا للفترات الطويلة. الخط المتصل يربط فترات 30 يومًا القابلة للمقارنة؛ والمتقطع يربط نقاطًا جزئية موثقة أو يتجاوز أيامًا قليلة فصلتها جرعة جديدة. لا نصل فترات بلا بيانات. عدد الفترات الكاملة ذات البيانات الكافية: ${status}.</p><details class="botox-trend-audit"><summary>تفاصيل فترات الـ30 يومًا</summary><div class="botox-table-scroll"><table class="botox-table"><thead><tr><th>الفترة</th><th>أيام الصداع</th><th>حالة البيانات</th></tr></thead><tbody>${table}</tbody></table></div></details><p class="mini">الفترات التاريخية بلا تسجيلات كافية لا تُعرض كصفر صداع. هذا التحليل وصفي ولا يثبت سبب التغير.</p>`;
 }
 function botoxMonthHtml(m,i){
  const title=['الشهر الأول','الشهر الثاني','الشهر الثالث'][i];

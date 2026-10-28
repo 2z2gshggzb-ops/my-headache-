@@ -183,3 +183,11 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .botox-trend-filter label{font-size:13px;font-weight:700;flex:0 0 auto}
 .botox-trend-filter select{flex:1 1 170px;max-width:270px;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);background:var(--surface);font:inherit;font-size:13px}
 .botox-trend-filter select:focus-visible,.botox-annual-plot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* v1.8.22: monthly headache-day average between recorded Botox injections. */
+.botox-dose-average-summary{display:flex;flex-wrap:wrap;gap:5px 8px;margin:7px 0 9px;font-size:11px;line-height:1.6;color:var(--muted)}
+.botox-dose-average-summary span{background:var(--surface2);padding:5px 8px;border-radius:9px;border:1px solid var(--line)}
+.botox-dose-average-summary b{color:var(--ink)}
+
+.botox-dose-average-details{margin:7px 0 9px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font-size:11px}
+.botox-dose-average-details summary{cursor:pointer;color:var(--muted)}
