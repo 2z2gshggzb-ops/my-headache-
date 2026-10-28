@@ -823,7 +823,7 @@ function exportBotoxCalendar(){
  for(const d of [30,14,7])lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:تبقى '+d+' يوماً على موعد البوتوكس','TRIGGER:-P'+d+'D','END:VALARM');
  lines.push('END:VEVENT','END:VCALENDAR');output(`yawmi-botox-${date}.ics`,lines.join('\r\n')+'\r\n','text/calendar;charset=utf-8');toast('تم تجهيز ملف التقويم؛ افتحه وأضف الحدث في التقويم');
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.21 (خط اتجاه البوتوكس + فلتر الجرعات)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.8.23 (تقرير الطبيب)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>صور RingConn</h3><p class="info">ألصق الصورة من حافظة الآيفون أو افتح صورة من الجهاز. المعالجة تتم داخل المتصفح؛ محرك OCR التجريبي يحتاج تنزيل مكوناته أول مرة عند توفر الإنترنت، وقد لا يعمل دون اتصال قبل اكتمال تنزيلها.</p><button class="btn secondary full" data-pick-image="1">تجربة صورة RingConn</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال نصي، لصق الصور، مراجعة النوم، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دقة OCR على RingConn والآيفون، دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تحليلات المحفزات المتقدمة، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
 // Keep per-tab vertical position, open <details>, and horizontal chart position.
 // A rerender (filters, records, tab changes) must not silently collapse panels.
 const viewMemory={renderedTab:null,tabs:Object.create(null),generation:0};
@@ -943,7 +943,159 @@ async function receiveBackup(file){try{const p=JSON.parse(await file.text());if(
  $('#replace-backup').onclick=async()=>{if(!confirm('سيُستبدل كامل سجل الجهاز. يُفضّل حفظ نسخة احتياطية أولًا. هل تريد الاستمرار؟'))return;await store.replaceAll(p.records,{settings:p.settings||app.settings});app.records=await store.getAll();app.settings={...app.settings,...p.settings};theme();closeModal();render();toast('تم استبدال البيانات من النسخة الاحتياطية')};
  }catch(e){toast('تعذّر قراءة النسخة: '+e.message)}}
 function exportCSV(){const keys=['id','type','at','sleepDate','severity','kind','spots','episodeId','ml','name','dose','duration','timeInBed','bedtime','wakeTime','deep','light','rem','awake','efficiency','nap','caffeine','meal','notes'];const esc=x=>'"'+String(Array.isArray(x)?x.join('|'):x??'').replace(/"/g,'""')+'"';const rows=[keys.join(','),...sorted(app.records).map(r=>keys.map(k=>esc(r[k])).join(','))];output(`daily-health-${localDate(now())}.csv`,'\ufeff'+rows.join('\r\n'),'text/csv;charset=utf-8');toast('تم تجهيز ملف CSV')}
-function doctorReport(){const a=getAnalytics(),dt=fmtDay(localDate(now())),h=sorted(a.heads);const items=h.map(x=>`<tr><td>${E(fmtShort(recordDate(x)))}</td><td>${E(kinds[x.kind])}</td><td>${x.severity}%</td><td>${E((x.spots||[]).join(','))}</td></tr>`).join('');const meds=sorted(a.r.filter(r=>r.type==='med')).map(r=>`<tr><td>${E(fmtShort(recordDate(r)))}</td><td>${E(r.name)}</td><td>${E(r.dose)}</td></tr>`).join('');openModal('تقرير مختصر للطبيب',`<div id="medical-report"><h3>Daily Health — ${app.period==='custom'?'من '+E(app.customStart)+' إلى '+E(app.customEnd):'الفترة المختارة: '+E(String(app.period))}</h3><p>${E(dt)}</p><p>أيام أعراض الرأس: ${a.symptomDays.size} — أيام صداع/شقيقة: ${a.headacheDays.size} — أيام استخدام علاج: ${a.medDays.size}</p><h4>القراءات</h4><table style="width:100%;font-size:11px"><tr><th>التاريخ</th><th>الحالة</th><th>الشدة</th><th>المواقع</th></tr>${items||'<tr><td colspan="4">لا توجد بيانات</td></tr>'}</table><h4>الأدوية</h4><table style="width:100%;font-size:11px"><tr><th>التاريخ</th><th>الدواء</th><th>الجرعة</th></tr>${meds||'<tr><td colspan="3">لا توجد بيانات</td></tr>'}</table><p class="mini">هذا تقرير تسجيل ذاتي وليس تشخيصًا.</p></div><button class="btn full" id="print-report">طباعة / حفظ PDF</button>`);$('#print-report').onclick=()=>{const html=$('#medical-report').innerHTML;const p=window.open('','_blank');if(!p){toast('اسمح بالنوافذ المنبثقة للطباعة');return}p.document.write(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>Daily Health Report</title><style>body{font-family:Arial;padding:25px;color:#23303c}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd2d6;padding:8px;text-align:right}p{line-height:1.7}</style>${html}<script>window.onload=()=>window.print()<\/script></html>`);p.document.close()}}
+// Doctor-ready, locally generated visit summary. Separate from analysis filters:
+// 90 completed calendar days by default; user may choose another interval.
+// No personal medical data is uploaded when the report is created or printed.
+function doctorReportModel(scope='90'){
+ const today=localDate(now());
+ const days=lastNDates(scope==='analysis'?app.period:Number(scope)).filter(d=>d<today).sort();
+ const inScope=new Set(days);
+ const all=app.records.filter(r=>inScope.has(recordDate(r)));
+ const clinical=all.filter(r=>r.type!=='botox');
+ const activeDates=clinical.map(recordDate).sort();
+ const first=activeDates[0]||null;
+ // Count only completed days following the first actual diary entry; earlier
+ // months with no diary cannot be manufactured as symptom-free.
+ const observed=first?days.filter(d=>d>=first):[];
+ const within=new Set(observed);
+ const records=clinical.filter(r=>within.has(recordDate(r)));
+ const recordedDays=new Set(records.map(recordDate));
+ const observedCount=observed.length;
+ const coverage=observedCount?Math.round(recordedDays.size/observedCount*100):0;
+ const plausibleRate=observedCount>=28&&coverage>=50;
+ const positives=records.filter(r=>r.type==='headache'&&Number(r.severity)>0);
+ const describedDays=new Set(records.filter(documentedHeadNote).map(recordDate));
+ const allSymptoms=new Set([...positives.map(recordDate),...describedDays]);
+ const headaches=new Set([...positives.filter(r=>['headache','migraine'].includes(r.kind)).map(recordDate),...describedDays]);
+ const migraines=new Set(positives.filter(r=>r.kind==='migraine').map(recordDate));
+ const otherSymptomDays=new Set([...allSymptoms].filter(d=>!headaches.has(d)));
+ const clearCount=Math.max(0,observedCount-allSymptoms.size);
+ const severityDays=[...headaches].map(d=>Math.max(0,...positives.filter(r=>recordDate(r)===d).map(r=>Number(r.severity)))).filter(n=>n>0);
+ const severityMax=severityDays.length?Math.max(...severityDays):null;
+ const meanMax=severityDays.length?Math.round(severityDays.reduce((n,x)=>n+x,0)/severityDays.length):null;
+ const episodeKeys=new Set(positives.filter(x=>['headache','migraine'].includes(x.kind)).map(r=>r.episodeId||r.id));
+ // Episode duration is only measured when the diary explicitly contains 0%
+ // after a known first positive reading in the same episode. Never estimate
+ // duration from the absence of further entries.
+ const episodeDurations=[];
+ for(const key of episodeKeys){
+  const entries=app.records.filter(r=>r.type==='headache'&&(r.episodeId||r.id)===key)
+   .filter(r=>Number.isFinite(Date.parse(r.at))).sort((a,b)=>new Date(a.at)-new Date(b.at));
+  const firstPositive=entries.find(r=>Number(r.severity)>0);
+  if(!firstPositive||!within.has(recordDate(firstPositive)))continue;
+  const ended=entries.find(r=>Number(r.severity)===0&&new Date(r.at)>new Date(firstPositive.at));
+  if(ended)episodeDurations.push(Math.round((new Date(ended.at)-new Date(firstPositive.at))/60000));
+ }
+ const medications=records.filter(r=>r.type==='med');
+ const medDays=new Set(medications.map(recordDate));
+ const medResponses=medicationResponseRows({r:medications});
+ const medGroups=new Map();
+ for(const r of medResponses){
+  const name=(r.m.name||'دواء غير محدد').trim();
+  const key=normalizedDrugName(name);
+  if(!medGroups.has(key))medGroups.set(key,{name,count:0,full:0,partial:0,none:0,pending:0});
+  const row=medGroups.get(key);row.count++;row[r.outcome||'pending']++;
+ }
+ const sleeping=new Map();
+ for(const r of records.filter(r=>r.type==='sleep'&&Number.isFinite(duration(r.duration))).sort((a,b)=>new Date(b.updatedAt||b.at)-new Date(a.updatedAt||a.at))){
+  if(!sleeping.has(recordDate(r)))sleeping.set(recordDate(r),duration(r.duration));
+ }
+ const sleepValues=[...sleeping.values()];
+ const waterDays=[];
+ for(const d of observed){const waters=records.filter(r=>r.type==='water'&&recordDate(r)===d&&r.kind!=='other'&&Number(r.ml)>0);if(waters.length)waterDays.push(waters.reduce((n,r)=>n+Number(r.ml),0));}
+ const avg=arr=>arr.length?Math.round(arr.reduce((n,x)=>n+x,0)/arr.length):null;
+ const monthly=plausibleRate?Math.round(headaches.size/observedCount*300)/10:null;
+ const meanDuration=episodeDurations.length?Math.round(episodeDurations.reduce((sum,n)=>sum+n,0)/episodeDurations.length):null;
+ const monthlyMigraine=plausibleRate?Math.round(migraines.size/observedCount*300)/10:null;
+ const firstDay=observed[0]||null,lastDay=observed.at(-1)||null;
+ // Keep a brief clinical timeline of headache days, not hundreds of rows.
+ const recent=[...headaches].sort().reverse().slice(0,8).map(d=>{
+  const dayRecords=positives.filter(r=>recordDate(r)===d);
+  const hasMigraine=dayRecords.some(r=>r.kind==='migraine');
+  const max=dayRecords.length?Math.max(...dayRecords.map(r=>Number(r.severity))):null;
+  return {date:d,kind:hasMigraine?'شقيقة':'صداع',maximum:max};
+ });
+ const sessions=botoxSessions().filter(r=>recordDate(r)<=today);
+ const lastSession=sessions.at(-1)||null;
+ const next=lastSession?botoxNext(lastSession):null;
+ const cycles=sessions.slice(-3).map((r)=>{
+  const i=sessions.indexOf(r);
+  const cycle=botoxCycle(r,sessions[i+1]||null),start=recordDate(r);
+  const bound=cycle.end;
+  const bins=[];
+  for(let j=0;j<3;j++){
+   const from=plusDays(start,j*30),to=plusDays(start,(j+1)*30);
+   if(from>=bound)break;
+   const result=botoxInterval(from,to<bound?to:bound);
+   bins.push({index:j+1,days:result.dayCount,logged:result.logged,sufficient:result.sufficient,rate:result.sufficient?Math.round(result.head/result.dayCount*300)/10:null});
+  }
+  const overall=cycle.overall;
+  return {start,overall,rate:overall.sufficient?Math.round(overall.head/overall.dayCount*300)/10:null,bins,partial:!sessions[i+1]&&today<bound};
+ });
+ return {scope,days,firstDay,lastDay,selectedStart:days[0]||null,selectedEnd:days.at(-1)||null,observedCount,recordedCount:recordedDays.size,coverage,plausibleRate,headacheCount:headaches.size,migraineCount:migraines.size,allSymptomCount:allSymptoms.size,otherSymptomCount:otherSymptomDays.size,clearCount,meanMax,severityMax,episodeCount:episodeKeys.size,meanDuration,resolvedEpisodeCount:episodeDurations.length,medCount:medications.length,medDayCount:medDays.size,medGroups:[...medGroups.values()].sort((a,b)=>b.count-a.count),sleepAvg:avg(sleepValues),sleepCount:sleepValues.length,waterAvg:avg(waterDays),waterCount:waterDays.length,monthly,monthlyMigraine,recent,lastSession,next,cycles,descriptionCount:describedDays.size};
+}
+function reportMetric(label,value,detail=''){
+ return `<div class="dr-metric"><span>${E(label)}</span><strong>${E(value)}</strong>${detail?`<small>${E(detail)}</small>`:''}</div>`;
+}
+function doctorReportHtml(m){
+ const n=v=>v===null?'غير كافٍ':String(v);
+ const period=m.selectedStart?`${E(fmtShort(m.selectedStart))} – ${E(fmtShort(m.selectedEnd))}`:'لا توجد أيام مكتملة';
+ const tracking=m.firstDay?`${E(fmtShort(m.firstDay))} – ${E(fmtShort(m.lastDay))}`:'لا توجد بيانات يومية في الفترة';
+ const monthlyNote=m.plausibleRate?'تقدير موحّد لكل 30 يومًا، وليس عدد نوبات منفصلة':'لا يُعرض المعدل الشهري قبل وجود 28 يوم متابعة وبيانات في نصف أيامها على الأقل';
+ const drugs=m.medGroups.length?m.medGroups.map(g=>`<tr><td>${E(g.name)}</td><td>${g.count}</td><td>${g.full}</td><td>${g.partial}</td><td>${g.none}</td><td>${g.pending||'—'}</td></tr>`).join(''):'<tr><td colspan="6">لا توجد جرعات مسجلة في الفترة.</td></tr>';
+ const botox=m.lastSession?`<div class="dr-botox-lead"><b>آخر جلسة:</b> ${E(fmtDay(recordDate(m.lastSession)))} ${m.lastSession.dose?'· الجرعة المسجلة: '+E(m.lastSession.dose):'· كمية الجرعة غير مدونة'}<br><b>الجلسة القادمة:</b> ${E(fmtDay(m.next.date))} <span>(${m.next.confirmed?'موعد أدخله المستخدم':'تقديري بعد 3 أشهر تقويمية، غير مؤكد'})</span></div>
+  <table class="dr-table"><thead><tr><th>تاريخ الجلسة</th><th>أول 30 يومًا</th><th>ثاني 30 يومًا</th><th>ثالث 30 يومًا</th><th>متوسط الدورة</th></tr></thead><tbody>${m.cycles.map(c=>`<tr><td>${E(fmtShort(c.start))}${c.partial?'<small>دورة جارية</small>':''}</td>${[0,1,2].map(i=>`<td>${c.bins[i]?c.bins[i].rate===null?'—':E(c.bins[i].rate+' يوم'):'—'}</td>`).join('')}<td>${c.rate===null?'—':E(c.rate+' يوم')}</td></tr>`).join('')}</tbody></table><p class="dr-caption">أيام الصداع والشقيقة لكل 30 يومًا بعد كل حقنة، وليس عدد النوبات. «—» يعني بيانات غير كافية أو فترة لم تكتمل. مقارنة الجلسات وصفية ولا تثبت سبب التحسن أو التراجع.</p>`:'<p class="dr-muted">لا توجد جلسة بوتوكس مسجلة.</p>';
+ const timeline=m.recent.length?`<table class="dr-table dr-timeline"><thead><tr><th>اليوم</th><th>التصنيف</th><th>أعلى شدة مسجلة</th></tr></thead><tbody>${m.recent.map(x=>`<tr><td>${E(fmtShort(x.date))}</td><td>${E(x.kind)}</td><td>${x.maximum===null?'موثق وصفيًا':E(x.maximum+'%')}</td></tr>`).join('')}</tbody></table>`:'<p class="dr-muted">لم تُسجّل أيام صداع أو شقيقة في الجزء المتاح من هذه الفترة.</p>';
+ return `<article class="doctor-report" lang="ar" dir="rtl">
+ <header class="dr-header"><div><small>يومي · سجل صحي شخصي</small><h2>ملخص الصداع والشقيقة للطبيب</h2><p>تقرير متابعة ذاتية يساعد في مراجعة العلاج الوقائي وعلاج النوبات</p></div><div class="dr-generated">تاريخ الإنشاء<br><b>${E(fmtDay(localDate(now())))}</b></div></header>
+ <div class="dr-period"><b>الفترة المطلوبة:</b> ${period}<span>بداية المتابعة اليومية المرصودة: ${tracking}</span></div>
+ <section class="dr-section"><h3>1. المؤشرات الأساسية</h3><div class="dr-grid">
+ ${reportMetric('أيام الصداع والشقيقة',m.headacheCount,'في الأيام المكتملة المرصودة')}
+ ${reportMetric('أيام الشقيقة تحديدًا',m.migraineCount)}
+ ${reportMetric('أيام جميع أعراض الرأس',m.allSymptomCount,'تشمل الثقل والأعراض غير المصنّفة')}
+ ${reportMetric('أيام بدون أعراض',m.firstDay?m.clearCount:'—','بعد بداية المتابعة فقط')}
+ ${reportMetric('أيام الصداع / 30 يومًا',m.monthly===null?'—':m.monthly,'معدل تقديري مشروط بكفاية البيانات')}
+ ${reportMetric('متوسط أعلى شدة في يوم الصداع',m.meanMax===null?'—':m.meanMax+'%','أعلى شدة مسجلة: '+(m.severityMax===null?'—':m.severityMax+'%'))}
+ </div><p class="dr-caption">${E(monthlyNote)}. النوبات المستقلة التي تحمل معرّفًا في السجل: ${m.episodeCount}؛ هذا العدد يعتمد على ربط المستخدم للقراءات وقد لا يعكس عدد النوبات سريريًا. متوسط مدة النوبات التي سُجّل انتهاؤها صراحةً: <b>${m.meanDuration===null?'—':E(fmtDuration(m.meanDuration))+' ساعة:دقيقة'}</b> (${m.resolvedEpisodeCount} نوبات لها بداية ونهاية موثقتان). لا نقدّر مدة النوبات التي لم يُسجّل انتهاؤها.</p>
+ <div class="dr-quality"><b>جودة التغطية:</b> ${m.observedCount?`${m.recordedCount} يومًا فيه تسجيل من أصل ${m.observedCount} يومًا مكتملًا بعد بدء التتبع (${m.coverage}%).`:'لا تتوفر متابعة يومية للفترة المطلوبة.'} ${m.coverage<50?'تغطية غير كافية لاستنتاج معدل الصداع الشهري أو تأكيد استقرار الأعراض.':'اليوم دون تسجيل صداع يُعد خاليًا من الصداع وفق طريقة متابعة المستخدم، خلال فترة التتبع النشط فقط.'} ${m.descriptionCount?'بعض أيام الصداع موثقة وصفياً بدون شدة رقمية.':''}</div>
+ </section>
+ <section class="dr-section"><h3>2. استخدام أدوية النوبات والاستجابة المسجّلة</h3><p class="dr-summary">أيام استخدام دواء للنوبات: <b>${m.medDayCount}</b> · عدد الجرعات المسجلة: <b>${m.medCount}</b></p><table class="dr-table"><thead><tr><th>الدواء</th><th>جرعات</th><th>اختفاء</th><th>تحسن جزئي</th><th>لا تحسن مسجّل</th><th>قيد الانتظار</th></tr></thead><tbody>${drugs}</tbody></table><p class="dr-caption">الاستجابة محسوبة خلال <b>150 دقيقة</b> من كل جرعة وفق تسجيلات الشدة أو ملاحظة تحسن صريحة. «لا تحسن مسجّل» لا يعني فشل الدواء طبيًا، والتحسن بعد الجرعة لا يثبت السببية. تُقيّم الجرعة الثانية بصورة مستقلة.</p></section>
+ <section class="dr-section"><h3>3. متابعة البوتوكس الوقائي</h3>${botox}</section>
+ <section class="dr-section"><h3>4. أحدث أيام الصداع والشقيقة</h3>${timeline}</section>
+ <section class="dr-section"><h3>5. معلومات مساعدة ونقاط للنقاش</h3><div class="dr-grid dr-grid-small">${reportMetric('متوسط النوم المسجّل',m.sleepAvg===null?'—':fmtDuration(m.sleepAvg),'من '+m.sleepCount+' يوم نوم مسجّل')}${reportMetric('متوسط الماء المسجّل',m.waterAvg===null?'—':m.waterAvg+' مل','من '+m.waterCount+' يوم شرب ماء مسجّل')}</div><p class="dr-caption">متوسط النوم والماء يعتمد فقط على الأيام التي تحتوي تسجيلات؛ لا يُفترض أن اليوم غير المسجل يساوي صفرًا. هذه الأرقام لا تثبت وجود محفّز للصداع.</p><div class="dr-discussion"><b>يُستكمل مع الطبيب:</b> هل تراجع أثر البوتوكس قرب موعد الجلسة؟ هل تغيرت القدرة على العمل والنشاط؟ هل توجد آثار جانبية للحقن؟ هل توجد حاجة لمراجعة أدوية النوبات أو خطة الوقاية؟<br><span>HIT-6، أثر الصداع على الأداء، والآثار الجانبية لا تُعرض كقيم لأن التطبيق لا يملك قياسًا موحدًا مسجلًا لها.</span></div></section>
+ <footer class="dr-footer">تقرير شخصي مستخرج محليًا من «يومي» وليس ملفًا طبيًا معتمدًا أو تشخيصًا. التاريخ والأوقات كما سجلها المستخدم، وبعض السجلات قد تكون تقريبية أو مسترجعة. <b>لا تُفسّر الفجوات التاريخية على أنها غياب للصداع.</b></footer>
+ </article>`;
+}
+function doctorReportCopyText(m){
+ const d=m.selectedStart?`${m.selectedStart} إلى ${m.selectedEnd}`:'لا توجد فترة مكتملة';
+ const lines=[`ملخص «يومي» لمراجعة طبيب الأعصاب — ${d}`,`الأيام المرصودة: ${m.observedCount}، أيام فيها تسجيل: ${m.recordedCount} (${m.coverage}%).`,`أيام الصداع والشقيقة: ${m.headacheCount}؛ أيام الشقيقة: ${m.migraineCount}؛ جميع أعراض الرأس: ${m.allSymptomCount}.`,`أيام خالية من أعراض الرأس بعد بدء المتابعة: ${m.firstDay?m.clearCount:'غير متاح'}.`,`أيام الصداع لكل 30 يومًا: ${m.monthly===null?'بيانات غير كافية':m.monthly}.`,`متوسط أعلى شدة: ${m.meanMax===null?'غير متاح':m.meanMax+'%'}، أعلى شدة: ${m.severityMax===null?'غير متاح':m.severityMax+'%'}.`,`متوسط مدة النوبات المكتملة التسجيل: ${m.meanDuration===null?'غير متاح':fmtDuration(m.meanDuration)} (${m.resolvedEpisodeCount} نوبات).`,`أيام أدوية النوبات: ${m.medDayCount}، جرعات مسجلة: ${m.medCount}.`,...m.medGroups.map(g=>`${g.name}: ${g.count} جرعات؛ اختفاء كامل ${g.full}، تحسن جزئي ${g.partial}، بدون تحسن مسجل ${g.none}، قيد الانتظار ${g.pending}.`),m.lastSession?`آخر بوتوكس: ${recordDate(m.lastSession)}. القادم ${m.next.date} (${m.next.confirmed?'مدخل يدويًا':'تقديري'}).`:'لا توجد جلسة بوتوكس مسجلة.',...m.cycles.map(c=>`جلسة ${c.start}: ${c.bins.map(b=>`الفترة ${b.index}: ${b.rate===null?'بيانات غير كافية':b.rate+' يوم صداع / 30 يومًا'}`).join('، ')}.`),`متوسط النوم المسجل: ${m.sleepAvg===null?'—':fmtDuration(m.sleepAvg)}؛ متوسط الماء المسجل: ${m.waterAvg===null?'—':m.waterAvg+' مل'}.`,'التقييم الذاتي للدواء خلال 150 دقيقة. عدم تسجيل تحسن ليس إثباتًا لعدم فعالية الدواء. الفجوات التاريخية لا تعني أيامًا سليمة.'];
+ return lines.join('\n');
+}
+function doctorReportPrintStyles(){return `@page{size:A4;margin:13mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#20333d;font:12px/1.65 Arial,Tahoma,sans-serif;direction:rtl} .doctor-report{max-width:none;margin:0;padding:0}.dr-header{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #227b85;padding-bottom:12px;align-items:start}.dr-header h2{font-size:20px;margin:0 0 3px}.dr-header small,.dr-header p,.dr-generated{color:#506975;margin:0}.dr-generated{min-width:145px;text-align:left;font-size:10px}.dr-period{padding:10px 12px;background:#eff6f7;margin:12px 0;border-radius:8px}.dr-period span{display:block;color:#607681}.dr-section{margin:14px 0;break-inside:avoid-page;page-break-inside:avoid}.dr-section h3{font-size:14px;border-bottom:1px solid #d5e3e6;padding-bottom:4px;margin:0 0 9px}.dr-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.dr-grid-small{grid-template-columns:repeat(2,minmax(0,1fr))}.dr-metric{padding:9px;border:1px solid #d3e2e5;border-radius:7px;min-width:0}.dr-metric span,.dr-metric small{display:block;color:#607681;font-size:10px}.dr-metric strong{display:block;font-size:18px;line-height:1.3;margin:4px 0}.dr-caption{font-size:10px;line-height:1.6;color:#586b72;margin:7px 0}.dr-quality,.dr-discussion{background:#f0f6f7;padding:9px;border-radius:6px;font-size:11px}.dr-discussion span{color:#5b6d76}.dr-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:10px}.dr-table th{background:#e8f2f4}.dr-table th,.dr-table td{border:1px solid #d7e1e4;padding:5px 4px;text-align:right;overflow-wrap:anywhere}.dr-table small{display:block;color:#607681}.dr-summary{font-size:11px}.dr-botox-lead{font-size:11px;margin-bottom:7px}.dr-botox-lead span{color:#677782}.dr-muted,.dr-footer{font-size:10px;color:#61747c}.dr-footer{padding-top:8px;border-top:1px solid #cfdee0;margin-top:12px}.dr-timeline{max-width:100%}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}`;}
+function doctorReport(){
+ const periodOptions=[['90','آخر 90 يومًا (افتراضيًا)'],['30','آخر 30 يومًا'],['180','آخر 180 يومًا'],['365','آخر 365 يومًا'],['analysis','حسب فترة التحليل الحالية']];
+ openModal('تقرير الطبيب',`<div class="dr-report-controls"><label class="field"><span>فترة تقرير الزيارة</span><select id="doctor-report-period">${periodOptions.map(([k,label])=>`<option value="${k}">${label}</option>`).join('')}</select></label><p class="mini">التقرير يُعد محليًا من بياناتك، ويُحدّث عند تغيير الفترة دون تعديل أي سجل.</p></div><div id="medical-report"></div><div class="dr-report-actions"><button class="btn" id="print-report" type="button">طباعة / حفظ PDF</button><button class="btn secondary" id="copy-report" type="button">نسخ الملخص</button></div>`,()=>{
+  let model=doctorReportModel('90');
+  const refresh=()=>{model=doctorReportModel($('#doctor-report-period').value);$('#medical-report').innerHTML=doctorReportHtml(model)};
+  $('#doctor-report-period').addEventListener('change',refresh);
+  refresh();
+  $('#copy-report').onclick=async()=>{
+   const text=doctorReportCopyText(model);
+   try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);toast('تم نسخ ملخص الطبيب');return;}}catch(e){}
+   // Older iOS PWA versions may block clipboard; show selectable text.
+   openModal('ملخص الطبيب للنسخ',`<textarea rows="14" class="dr-copy-area" readonly>${E(text)}</textarea><p class="mini">اضغط مطولًا على النص ثم اختر تحديد الكل والنسخ.</p>`);
+  };
+  $('#print-report').onclick=()=>{
+   const html=doctorReportHtml(model);
+   // Opening directly from the click keeps mobile Safari's popup restrictions happy.
+   const printWindow=window.open('','_blank');
+   if(!printWindow){toast('اسمح بفتح نافذة الطباعة من Safari');return;}
+   printWindow.document.open();
+   printWindow.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>تقرير يومي للطبيب - ${E(localDate(now()))}</title><style>${doctorReportPrintStyles()}</style></head><body>${html}<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),350)});<\/script></body></html>`);
+   printWindow.document.close();
+  };
+ });
+}
 function setTab(tab){
  if(tab===app.tab){window.scrollTo({top:0,behavior:'instant'});const memory=viewMemory.tabs[tab];if(memory)memory.scrollY=0;return}
  app.tab=tab;render();
