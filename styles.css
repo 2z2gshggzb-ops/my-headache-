@@ -262,3 +262,68 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 .routine-group.has-risk>summary{border-right:4px solid #bd4f4f}.group-risk{font-size:10px;color:#bb3535;background:#fde8e8;padding:4px 7px;border-radius:7px}
 .routine-group-inner{padding:0 12px 12px}.routine-group .water24-panel{margin:0;border:none;padding:4px 0}
 @media(max-width:380px){.food-tag-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.period-primary button{font-size:11px;padding:8px 5px}.period-navigator strong{font-size:11px}}
+
+/* Yawmi 1.9.1: compact one-screen symptom and food entry */
+.modal-head{gap:7px;position:sticky;top:-16px;background:var(--surface);z-index:4;padding-top:4px}
+.modal-head h2{font-size:16px;white-space:nowrap;flex-shrink:1;min-width:0}
+.modal-head .icon-btn{flex:none;padding:4px 5px}
+.modal-header-time{display:flex;align-items:center;flex:1;min-width:0;justify-content:flex-end}
+.modal-header-time input{font-family:inherit;font-size:11px;direction:ltr;min-width:0;width:min(46vw,205px);max-width:100%;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:6px 3px;line-height:22px}
+#head-form .field:first-child,#entry-form[data-entry=food] .field:first-child{margin-top:3px}
+#head-form .choice-btn{min-height:37px;padding:7px 9px;font-size:12px;border-radius:10px}
+#head-form .two-choice{gap:6px}
+#head-form .field{margin:7px 0}
+#head-form .migraine-toggle{padding:0 1px 2px;font-size:12px}
+#head-form .migraine-toggle input{width:17px;height:17px}
+#head-form .severity-field{padding:2px 0}
+#head-form .severity-label strong{font-size:22px}
+#head-form .field input.severity-large{min-height:48px;height:48px;margin:0;direction:rtl}
+#head-form .severity-ticks{direction:rtl;font-size:10px}
+#head-form .severity-steppers{margin-top:5px;gap:6px}
+#head-form .severity-steppers button{height:34px;width:54px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#head-form .severity-steppers span{font-size:10px}
+#head-form .head-map{padding:0 3px;margin:4px auto;max-width:265px}
+#head-form .head-map svg{display:block;max-height:136px;margin:auto}
+#head-form #location-wrap>.mini{display:block;font-size:10px;line-height:1.35}
+#head-form .entry-more{margin:7px 0;padding:7px 10px}
+#head-form .btn-row{margin-top:7px}
+#head-form .info{line-height:1.45;margin:4px 0}
+#entry-form[data-entry=food] .choice-btn{min-height:38px;padding:8px 6px}
+#entry-form[data-entry=food] .food-tag-grid{gap:5px}
+#entry-form[data-entry=food] .food-tag{min-height:34px;padding:6px 4px}
+#entry-form[data-entry=food] .mini{margin:5px 0}
+#entry-form[data-entry=food] .entry-more{margin:7px 0;padding:8px 10px}
+
+/* iOS select controls become familiar scroll-wheel pickers on tap. */
+.sleep-day-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.sleep-day-row label{color:var(--muted);font-size:12px;font-weight:650}
+.sleep-day-row input{width:157px;min-width:0;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px;font-size:13px;direction:ltr}
+.sleep-clock-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.time-wheel{background:var(--surface2);border:1px solid var(--line);border-radius:13px;padding:10px 8px;min-width:0;text-align:center}
+.time-wheel>strong{font-size:14px;font-weight:750;display:block;margin-bottom:7px}
+.time-wheel-select{display:flex;align-items:center;justify-content:center;gap:2px}
+.time-wheel-select select{min-width:0;flex:1;width:45%;height:44px;appearance:auto;-webkit-appearance:menulist;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);text-align:center;text-align-last:center;font-size:16px;padding:4px 0;font-variant-numeric:tabular-nums}
+.time-wheel-select span{font-size:20px;color:var(--muted)}
+.sleep-preview{background:var(--soft);color:var(--accent);border-radius:11px;text-align:center;font-weight:750;padding:9px;margin:9px 0;font-variant-numeric:tabular-nums}
+.nap-details{margin:7px 0}
+.nap-details .sleep-clock-grid{margin:11px 0 8px}
+.nap-details .time-wheel{padding:7px 5px}
+.nap-details .time-wheel-select select{height:39px;font-size:15px}
+
+/* Settings: food tag list is editable, without changing any historical records. */
+.food-setting-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0}
+.food-setting-item{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);padding:7px 5px;font-size:12px;min-width:0}
+.food-setting-item input{accent-color:var(--accent);width:16px;height:16px;flex:none}
+.food-setting-item span{overflow-wrap:anywhere}
+.food-add-row{display:flex;gap:6px;margin:10px 0}
+.food-add-row input{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:9px;color:var(--ink);padding:8px}
+
+/* Analytics: place completeness toggle on the left of the heading in RTL. */
+.analysis-title{align-items:flex-start}
+.exclude-untracked{display:flex;align-items:center;gap:6px;flex:0 0 auto;max-width:51%;font-size:10px;line-height:1.4;color:var(--ink);padding-top:5px}
+.exclude-untracked input{accent-color:var(--accent);width:17px;height:17px;flex:none}
+@media(max-width:370px){.modal{padding-right:12px;padding-left:12px}.modal-header-time input{width:43vw;font-size:10px}.modal-head h2{font-size:14px}.food-setting-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Use maximum available height on smaller iPhones, while keeping native scrolling as fallback. */
+.modal-layer:has(#head-form) .modal,.modal-layer:has(#entry-form[data-entry=food]) .modal{max-height:95dvh}
+@media(max-height:720px){#head-form .head-map{max-width:225px}#head-form .head-map svg{max-height:110px}#head-form .field{margin:4px 0}#head-form .entry-more{margin:4px 0}#head-form .severity-steppers button{height:31px}.modal-layer:has(#head-form) .modal{padding-top:10px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}}
