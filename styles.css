@@ -327,3 +327,40 @@ html{height:100%;background:var(--bg)}*{box-sizing:border-box}body{margin:0;colo
 /* Use maximum available height on smaller iPhones, while keeping native scrolling as fallback. */
 .modal-layer:has(#head-form) .modal,.modal-layer:has(#entry-form[data-entry=food]) .modal{max-height:95dvh}
 @media(max-height:720px){#head-form .head-map{max-width:225px}#head-form .head-map svg{max-height:110px}#head-form .field{margin:4px 0}#head-form .entry-more{margin:4px 0}#head-form .severity-steppers button{height:31px}.modal-layer:has(#head-form) .modal{padding-top:10px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}}
+
+/* v1.9.2 — concise, four-group trigger comparisons. */
+.trigger-panel{padding:15px 14px}
+.trigger-panel-head h3{font-size:18px;margin:0}
+.trigger-panel-head .mini{display:block;margin:3px 0 9px}
+.trigger-groups{border-top:1px solid var(--line);margin-top:12px}
+.trigger-group{border-bottom:1px solid var(--line);margin:0}
+.trigger-group:last-child{border-bottom:0}
+.trigger-group>summary{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;padding:16px 0;min-height:104px}
+.trigger-group>summary::-webkit-details-marker,.trigger-subfactor>summary::-webkit-details-marker{display:none}
+.trigger-group>summary::marker,.trigger-subfactor>summary::marker{content:''}
+.trigger-icon{width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:var(--surface2);font-size:25px;display:grid;place-items:center;color:var(--ink)}
+.trigger-copy{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.6}
+.trigger-copy strong{font-size:15px}
+.trigger-copy>span{font-size:12px;color:var(--ink);overflow-wrap:anywhere}
+.trigger-copy small{font-size:11px;color:var(--muted);margin-top:3px}
+.trigger-number{min-width:69px;max-width:83px;display:flex;flex-direction:column;align-items:center;gap:1px;flex:0 0 75px;text-align:center;align-self:center}
+.trigger-number b{font-size:22px;line-height:1.2;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
+.trigger-number.risk b{color:var(--risk)}
+.trigger-number.neutral b{color:var(--ink)}
+.trigger-number.muted b{font-size:14px;color:var(--muted)}
+.trigger-number small{color:var(--muted);font-size:10px;line-height:1.45}
+.trigger-group.has-signal>summary{border-inline-start:3px solid var(--risk);padding-inline-start:7px}
+.trigger-details{padding:0 0 13px 0}
+.trigger-subfactor{border:1px solid var(--line);border-radius:12px;margin:8px 0;overflow:hidden;background:var(--surface)}
+.trigger-subfactor>summary{list-style:none;cursor:pointer;padding:11px 12px;display:flex;justify-content:space-between;gap:9px;align-items:center;font-weight:650;font-size:12px}
+.trigger-sub-result{flex:none;font-size:11px;color:var(--muted)}
+.trigger-sub-result b{color:var(--ink);font-size:12px}
+.trigger-sub-body{padding:0 12px 12px}
+.trigger-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.trigger-stat{background:var(--surface2);border-radius:11px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:3px}
+.trigger-stat>span{font-size:11px;line-height:1.5;min-height:28px}
+.trigger-stat>b{font-size:23px;line-height:1.2;color:var(--ink);font-variant-numeric:tabular-nums}
+.trigger-stat>small{font-size:10px;color:var(--muted)}
+.trigger-verdict{font-size:12px;line-height:1.8;padding:10px;background:var(--soft);border-radius:10px;margin:9px 0}
+.trigger-panel .timing-audit{margin:8px 0 0}
+@media(max-width:390px){.trigger-panel{padding:12px 11px}.trigger-group>summary{gap:8px}.trigger-icon{width:36px;height:36px;flex-basis:36px;font-size:22px}.trigger-number{flex-basis:62px;min-width:62px;max-width:62px}.trigger-number b{font-size:19px}.trigger-copy strong{font-size:14px}.trigger-copy>span{font-size:11px}}
