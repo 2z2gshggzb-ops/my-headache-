@@ -82,7 +82,23 @@ function minsDuration(min){return `${String(Math.floor(min/60)).padStart(2,'0')}
 function hoursForInput(value){const m=duration(value);return Number.isFinite(m)?String(Math.round(m/60*100)/100):''}
 function hoursToDuration(value){const hrs=Number(value);if(!Number.isFinite(hrs)||hrs<=0||hrs>24)return null;const m=Math.round(hrs*60);return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`}
 function manualEntry(type,edit=null){
- const r=edit||{},base=`${formField('وقت الحدث','at','datetime-local',rTime(r))}`,notes=textareaField('ملاحظة (اختياري)','notes',r.notes||'');let html='';
+ const r=edit||{};
+ // Preserve measured sleep durations from Apple Health. The clock difference is
+ // not the actual sleep duration when awake intervals are excluded.
+ if(type==='sleep' && r.syncOrigin==='apple-health-shortcuts'){
+  const elapsed=elapsedClockMinutes(r.bedtime,r.wakeTime);
+  const clockSpan=elapsed===null?'—':minsDuration(elapsed);
+  openModal('تفاصيل نوم Apple Health',`<div class="panel soft"><h3>☾ النوم الفعلي من Apple Health</h3><div class="kv"><span>تاريخ الاستيقاظ</span><b>${E(r.sleepDate||'—')}</b></div><div class="kv"><span>نمت</span><b>${E(r.bedtime||'—')}</b></div><div class="kv"><span>صحيت</span><b>${E(r.wakeTime||'—')}</b></div><div class="kv"><span>النوم الفعلي</span><b>${E(r.duration||'—')}</b></div><div class="kv"><span>الفترة بين النوم والصحيان</span><b>${E(clockSpan)}</b></div><p class="mini">النوم الفعلي هو مجموع Core وDeep وREM، ويستبعد فترات الاستيقاظ. هذا عرض للبيانات المقاسة ولا يعيد حسابها.</p></div><div class="panel"><h3>مراحل النوم</h3><div class="kv"><span>خفيف (Core)</span><b>${E(r.light||'—')}</b></div><div class="kv"><span>عميق (Deep)</span><b>${E(r.deep||'—')}</b></div><div class="kv"><span>الأحلام (REM)</span><b>${E(r.rem||'—')}</b></div><div class="kv"><span>مستيقظ أثناء الفترة</span><b>${E(r.awake||'—')}</b></div><p class="mini">للتعديل يدويًا، يجب تحويل السجل أولًا. بعد التحويل ستُحسب المدة من الوقتين ولن تُحدّثه المزامنة.</p></div><div class="btn-row"><button class="btn secondary" type="button" id="convert-health-sleep">تحويل إلى تسجيل يدوي</button><button class="btn ghost" type="button" data-close="modal">إغلاق</button></div><button class="btn danger small" type="button" data-delete="${E(r.id)}">حذف التسجيل</button>`);
+  $('#convert-health-sleep').onclick=()=>{
+   if(!confirm('هل تريد تحويل سجل النوم إلى إدخال يدوي؟ ستُحسب مدة النوم من وقت النوم إلى الصحيان، ولن تحدّثه مزامنة Apple Health لاحقًا.'))return;
+   const manual={...r,source:'self-report',manualOverride:true};
+   for(const key of ['syncOrigin','sleepStart','sleepEnd','timeInBed','deep','light','rem','awake','efficiency'])delete manual[key];
+   closeModal();
+   manualEntry('sleep',manual);
+  };
+  return;
+ }
+ const base=`${formField('وقت الحدث','at','datetime-local',rTime(r))}`,notes=textareaField('ملاحظة (اختياري)','notes',r.notes||'');let html='';
  if(type==='water')html=`${formField('الكمية بالمل','ml','number',r.ml||app.settings.waterCup,'min="1" step="1"')}${base}${notes}`;
  else if(type==='coffee')html=`${selField('النوع','name',['V60','قهوة سعودية','أمريكانو','إسبريسو','لاتيه','شاي','مشروب طاقة','عصير','مشروب آخر'].map(x=>[x,x]),r.name||'V60')}${formField('الحجم (مل) — اختياري','ml','number',r.ml||'', 'min="0"')}${formField('الكافيين (mg) — اختياري','caffeine','number',r.caffeine||'', 'min="0"')}${base}${selField('دقة وقت المشروب','timePrecision',[['confirmed','الوقت مؤكد'],['approximate','الوقت تقريبي']],r.timeApprox===true?'approximate':'confirmed')}${notes}`;
  else if(type==='food'){
