@@ -1,5 +1,6 @@
 import * as store from './storage.js';
 import {recognizeLocal,parseSleepOCR} from './ocr.js';
+import {parseSleepSamples, planSleepImport} from './sleep-sync.mjs';
 const $=s=>document.querySelector(s);
 const E=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>globalThis.crypto?.randomUUID?.()||`r_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -19,10 +20,11 @@ const icons={water:'◉',coffee:'♨',food:'▤',sleep:'☾',med:'✚',headache:
 const types={water:'ماء',coffee:'قهوة أو مشروب',food:'وجبة',sleep:'نوم',med:'دواء',headache:'أعراض الرأس',clear:'يوم بدون أعراض',note:'ملاحظة',botox:'علاج وقائي'};
 const spots={A:'بين الحاجبين',BR:'الحاجب الأيمن',BL:'الحاجب الأيسر',C:'أعلى منتصف الرأس',F:'منتصف الجبهة',O:'مكان آخر'};
 const kinds={heavy:'ثقل خفيف',headache:'صداع',migraine:'شقيقة',unknown:'غير محدد'};
-const app={lastWaterTap:{ml:0,time:0},lastQuickTap:{kind:'',time:0},records:[],tab:'today',date:localDate(now()),month:localDate(now()).slice(0,7),period:30,periodOffset:0,customStart:'',customEnd:'',analysisMode:'headache_only',severityView:'fit',botoxTrendScope:'12m',settings:{theme:'system',waterCup:200,waterBottle:330,lastBackup:null,excludeIncompleteDays:true},previewImage:null,editing:null,undo:null,filter:'all',search:'',toastTimer:null,ocrRunning:false};
+const app={lastWaterTap:{ml:0,time:0},lastQuickTap:{kind:'',time:0},records:[],tab:'today',date:localDate(now()),month:localDate(now()).slice(0,7),period:30,periodOffset:0,customStart:'',customEnd:'',analysisMode:'headache_only',severityView:'fit',botoxTrendScope:'12m',settings:{theme:'system',waterCup:200,waterBottle:330,lastBackup:null,excludeIncompleteDays:true},sleepSync:{endpoint:'',token:'',lastSyncAt:null,lastError:''},sleepSyncBusy:false,previewImage:null,editing:null,undo:null,filter:'all',search:'',toastTimer:null,ocrRunning:false};
 const view=$('#view'),layer=$('#modal-layer');
 function theme(){const t=app.settings.theme;document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;$('#theme-btn').textContent=document.documentElement.dataset.theme==='dark'?'☼':'☾'}
 function recordDate(r){return r.type==='sleep'?(r.sleepDate||localDate(r.at)):localDate(r.at)}
+function diaryEntry(r){return !(r.type==='sleep' && r.syncOrigin==='apple-health-shortcuts')}
 function atDate(d,h='12:00'){return new Date(`${d}T${h}:00`).toISOString()}
 function sorted(items){return [...items].sort((a,b)=>(new Date(b.at)-new Date(a.at))||(new Date(b.updatedAt||b.at)-new Date(a.updatedAt||a.at)))}
 function recordsDay(d){return sorted(app.records.filter(r=>recordDate(r)===d))}
@@ -120,7 +122,7 @@ function manualEntry(type,edit=null){
   const nm=v.napStart?elapsedClockMinutes(v.napStart,v.napEnd,240):null;
   if(v.napStart&&nm===null){toast('مدة الغفوة يجب أن تكون من دقيقة إلى 4 ساعات');return}
   v.nap=nm===null?(!r.napStart&&!r.napEnd&&r.nap?r.nap:''):String(nm);v.timeApprox=false;
- }const newR={...r,...v,type,at:type==='sleep'?atDate(v.sleepDate,'09:00'):iso(new Date(v.at)),id:r.id||uid()};if(['food','coffee','sleep'].includes(type)){newR.timeApprox=v.timePrecision==='approximate';delete newR.timePrecision;}if(type==='med'&&!r.id)newR.episodeId=activeEpisode(new Date(newR.at));if(type==='sleep'){newR.sleepDate=v.sleepDate;newR.source=r.source||'self-report';delete newR.atField;if(!r.id){const previous=app.records.find(x=>x.type==='sleep'&&x.sleepDate===v.sleepDate);if(previous){if(!confirm('يوجد تسجيل نوم لهذا اليوم. هل تريد تحديثه بدل إضافة تسجيل مكرر؟'))return;newR.id=previous.id}}}if(type==='water')newR.ml=+v.ml;if(type==='coffee'){newR.ml=v.ml===''?'':+v.ml;newR.caffeine=v.caffeine===''?'':+v.caffeine}await persist(newR);closeModal()});
+ }const newR={...r,...v,type,at:type==='sleep'?atDate(v.sleepDate,'09:00'):iso(new Date(v.at)),id:r.id||uid()};if(['food','coffee','sleep'].includes(type)){newR.timeApprox=v.timePrecision==='approximate';delete newR.timePrecision;}if(type==='med'&&!r.id)newR.episodeId=activeEpisode(new Date(newR.at));if(type==='sleep'){newR.sleepDate=v.sleepDate;newR.source=r.syncOrigin?'self-report':(r.source||'self-report');if(r.syncOrigin){delete newR.syncOrigin;newR.manualOverride=true}delete newR.atField;if(!r.id){const previous=app.records.find(x=>x.type==='sleep'&&x.sleepDate===v.sleepDate);if(previous){if(!confirm('يوجد تسجيل نوم لهذا اليوم. هل تريد تحديثه بدل إضافة تسجيل مكرر؟'))return;newR.id=previous.id}}}if(type==='water')newR.ml=+v.ml;if(type==='coffee'){newR.ml=v.ml===''?'':+v.ml;newR.caffeine=v.caffeine===''?'':+v.caffeine}await persist(newR);closeModal()});
 }
 function zonesSVG(selected){const c=id=>selected.includes(id)?'var(--accent)':'var(--muted)';const o=id=>selected.includes(id)?'.38':'.10';const point=(id,x,y,rad,label)=>`<g data-zone="${id}" class="head-point" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="${rad}" fill="${c(id)}" fill-opacity="${o(id)}" stroke="${c(id)}" stroke-width="2"/><text x="${x}" y="${y+4}" font-size="12" text-anchor="middle" fill="currentColor">${label}</text></g>`;return `<div class="head-map"><svg viewBox="0 0 320 182" role="img" aria-label="رسم الرأس من الأمام والأعلى"><ellipse cx="84" cy="87" rx="55" ry="76" fill="none" stroke="currentColor" opacity=".35"/><path d="M42 94 Q56 83 71 94 M96 94 Q110 83 125 94 M81 101 L75 118 L88 118 M67 138 Q84 148 102 138" fill="none" stroke="currentColor" opacity=".33" stroke-width="2"/><ellipse cx="237" cy="86" rx="58" ry="69" fill="none" stroke="currentColor" opacity=".35"/><path d="M237 19 V154 M179 86 H295" stroke="currentColor" opacity=".16" stroke-dasharray="5 4"/>${point('A',84,111,11,'A')}${point('BR',59,86,12,'B')}${point('BL',108,86,12,'B')}${point('F',84,58,16,'F')}${point('C',237,86,23,'C')}${point('O',285,136,10,'O')}<text x="84" y="179" text-anchor="middle" font-size="11" fill="currentColor">من الأمام</text><text x="237" y="168" text-anchor="middle" font-size="11" fill="currentColor">من الأعلى</text></svg></div>`}
 function headModal(edit=null){
@@ -175,11 +177,11 @@ function saveQuickMed(kind){
  closeModal();persist(r);
 }
 
-function summary(r){switch(r.type){case 'water':return `ماء — ${r.ml} مل`;case 'coffee':return `${r.name||'مشروب'}${r.ml?' — '+r.ml+' مل':''}`;case 'food':return r.name||'وجبة';case 'med':return `${r.name||'دواء'}${r.dose?' '+r.dose:''}`;case 'sleep':return `نوم ${r.duration||'—'}${r.source==='ringconn'?' — RingConn':''}${r.napStart&&r.napEnd?' · غفوة '+r.napStart+'–'+r.napEnd:''}`;case 'headache':return Number(r.severity)===0?'انتهى الصداع — 0%':`${kinds[r.kind]||'أعراض الرأس'} ${r.severity}% — ${(r.spots||[]).map(s=>s==='O'?'أخرى':s).join(' + ')}`;case 'clear':return 'يوم بدون أعراض (مؤكد)';case 'note':return r.notes||'ملاحظة';case 'botox':return `${r.name||'علاج وقائي'} ${r.dose||''}`;default:return r.type}}
+function summary(r){switch(r.type){case 'water':return `ماء — ${r.ml} مل`;case 'coffee':return `${r.name||'مشروب'}${r.ml?' — '+r.ml+' مل':''}`;case 'food':return r.name||'وجبة';case 'med':return `${r.name||'دواء'}${r.dose?' '+r.dose:''}`;case 'sleep':return `نوم ${r.duration||'—'}${r.source==='ringconn'?' — RingConn':r.source==='apple-health'?' — Apple Health':''}${r.napStart&&r.napEnd?' · غفوة '+r.napStart+'–'+r.napEnd:''}`;case 'headache':return Number(r.severity)===0?'انتهى الصداع — 0%':`${kinds[r.kind]||'أعراض الرأس'} ${r.severity}% — ${(r.spots||[]).map(s=>s==='O'?'أخرى':s).join(' + ')}`;case 'clear':return 'يوم بدون أعراض (مؤكد)';case 'note':return r.notes||'ملاحظة';case 'botox':return `${r.name||'علاج وقائي'} ${r.dose||''}`;default:return r.type}}
 function detail(r){if(r.type==='sleep')return `تاريخ الاستيقاظ ${r.sleepDate}`;if(r.type==='headache'&&r.episodeId)return `${fmtTime(r.at)} · ${Number(r.severity)===0?'انتهى الألم':(r.relation==='possible_return_24h'?'عودة محتملة (نوبة مستقلة)':kinds[r.kind])}`;return fmtTime(r.at)}
 function eventRow(r){return `<button class="list-row" data-open="${E(r.id)}"><span class="row-icon">${icons[r.type]||'•'}</span><span class="row-body"><strong>${E(summary(r))}</strong><small>${E(detail(r))}</small></span><span class="row-arrow">‹</span></button>`}
 function dayCards(d,showMaximum=false){const v=valuesDay(d),maxHead=showMaximum&&v.heads.length?[...v.heads].filter(x=>Number.isFinite(Number(x.severity))).sort((a,b)=>Number(b.severity)-Number(a.severity))[0]:null,h=showMaximum?(maxHead||null):v.current;return `<div class="cards"><div class="stat"><span class="stat-name"><span class="symbol">◌</span>أعراض الرأس</span><b>${h?h.severity+'%':'—'}</b><span class="hint">${h?(showMaximum?'أعلى شدة خلال اليوم':(Number(h.severity)===0?'انتهى الألم':E(kinds[h.kind]||'آخر قياس'))):'لا توجد قراءة اليوم'}</span></div><div class="stat"><span class="stat-name"><span class="symbol">◉</span>الماء</span><b>${v.water.toLocaleString('en-US')}</b><span class="hint">مل مسجل اليوم</span></div><div class="stat"><span class="stat-name"><span class="symbol">☾</span>النوم</span><b>${E(v.sleep?.duration||'—')}</b><span class="hint">النوم الفعلي</span></div><div class="stat"><span class="stat-name"><span class="symbol">♨</span>القهوة والمشروبات</span><b>${v.coffee.length}</b><span class="hint">مرات مسجلة</span></div></div>`}
-function renderToday(){const d=localDate(now()),v=valuesDay(d);return `<div class="view-title"><div><h1>يومي</h1><span class="sub">${E(fmtDay(d))}</span></div><span class="pill">محلي وخاص</span></div>${dayCards(d)}<div class="section-title"><strong>إضافة سريعة</strong></div><div class="quick-grid"><button class="quick-btn" data-quick="cup"><span class="q-ic">◉</span><span>كاسة</span></button><button class="quick-btn" data-quick="bottle"><span class="q-ic">◉</span><span>قارورة</span></button><button class="quick-btn" data-quick="headache"><span class="q-ic">◌</span><span>صداع</span></button><button class="quick-btn" data-quick="coffee"><span class="q-ic">♨</span><span>قهوة</span></button><button class="quick-btn" data-quick="food"><span class="q-ic">▤</span><span>أكل</span></button><button class="quick-btn" data-quick="sleep"><span class="q-ic">☾</span><span>نوم</span></button></div><div class="section-title"><strong>آخر الأحداث</strong><button class="btn ghost small" data-go="history">السجل ‹</button></div>${v.records.length?v.records.slice(0,7).map(eventRow).join(''):'<div class="empty">ما فيه تسجيلات لليوم بعد. ابدأ بكاسة ماء أو سجل أي ملاحظة.</div>'}<div class="section-title"><strong>خيارات إضافية</strong></div><div class="btn-row"><button class="btn secondary small" data-quick="med">✚ تسجيل الدواء</button><button class="btn secondary small" data-quick="clear">✓ يوم بدون أعراض</button><button class="btn ghost small" data-quick="note">✎ ملاحظة</button></div>`}
+function renderToday(){const d=localDate(now()),v=valuesDay(d);return `<div class="view-title"><div><h1>يومي</h1><span class="sub">${E(fmtDay(d))}</span></div><span class="pill">${app.sleepSync.endpoint?'نوم متزامن · اليوميات محلية':'محلي وخاص'}</span></div>${dayCards(d)}<div class="section-title"><strong>إضافة سريعة</strong></div><div class="quick-grid"><button class="quick-btn" data-quick="cup"><span class="q-ic">◉</span><span>كاسة</span></button><button class="quick-btn" data-quick="bottle"><span class="q-ic">◉</span><span>قارورة</span></button><button class="quick-btn" data-quick="headache"><span class="q-ic">◌</span><span>صداع</span></button><button class="quick-btn" data-quick="coffee"><span class="q-ic">♨</span><span>قهوة</span></button><button class="quick-btn" data-quick="food"><span class="q-ic">▤</span><span>أكل</span></button><button class="quick-btn" data-quick="sleep"><span class="q-ic">☾</span><span>نوم</span></button></div><div class="section-title"><strong>آخر الأحداث</strong><button class="btn ghost small" data-go="history">السجل ‹</button></div>${v.records.length?v.records.slice(0,7).map(eventRow).join(''):'<div class="empty">ما فيه تسجيلات لليوم بعد. ابدأ بكاسة ماء أو سجل أي ملاحظة.</div>'}<div class="section-title"><strong>خيارات إضافية</strong></div><div class="btn-row"><button class="btn secondary small" data-quick="med">✚ تسجيل الدواء</button><button class="btn secondary small" data-quick="clear">✓ يوم بدون أعراض</button><button class="btn ghost small" data-quick="note">✎ ملاحظة</button></div>`}
 function moveMonth(delta){const [y,m]=app.month.split('-').map(Number);const d=new Date(y,m-1+delta,1);app.month=localDate(d).slice(0,7);app.date=`${app.month}-01`;render()}
 function calendar(){const [y,m]=app.month.split('-').map(Number),first=new Date(y,m-1,1).getDay(),length=new Date(y,m,0).getDate(),prefix=first,suffix=(7-(prefix+length)%7)%7,rows=[];for(let i=0;i<prefix;i++)rows.push('<span></span>');for(let i=1;i<=length;i++){const date=`${app.month}-${String(i).padStart(2,'0')}`,has=app.records.some(r=>recordDate(r)===date),sel=app.date===date;rows.push(`<button data-date="${date}" class="${sel?'selected':''} ${has?'has':''}">${i}</button>`)}for(let i=0;i<suffix;i++)rows.push('<span></span>');return `<div class="panel"><div class="calendar-header"><button class="btn ghost small" data-month="-1">›</button><strong>${new Date(y,m-1,14).toLocaleDateString('ar-SA',{month:'long',year:'numeric',calendar:'gregory'})}</strong><button class="btn ghost small" data-month="1">‹</button></div><div class="cal">${['أحد','إثن','ثلا','أرب','خمي','جمع','سبت'].map(x=>`<span class="dow">${x}</span>`).join('')}${rows.join('')}</div></div>`}
 function renderHistory(){const records=recordsDay(app.date).filter(r=>(app.filter==='all'||r.type===app.filter)&&(!app.search||summary(r).toLowerCase().includes(app.search.toLowerCase())||(r.notes||'').toLowerCase().includes(app.search.toLowerCase())));return `<div class="view-title"><div><h1>السجل</h1><span class="sub">التقويم والأحداث والتعديل</span></div></div>${calendar()}${dayCards(app.date,true)}<div class="field"><label>بحث في تسجيلات اليوم</label><input id="search-field" type="search" value="${E(app.search)}" placeholder="Ubrelvy أو V60 أو كلمة في الملاحظات"></div><div class="segmented" id="history-filters">${[['all','الكل'],['headache','الرأس'],['water','الماء'],['med','الأدوية'],['sleep','النوم'],['food','الطعام']].map(([k,v])=>`<button data-filter="${k}" class="${app.filter===k?'active':''}">${v}</button>`).join('')}</div><div class="section-title"><strong>${E(fmtDay(app.date))}</strong><button class="btn secondary small" data-add-at-date="${app.date}">+ إضافة</button></div>${records.length?records.map(eventRow).join(''):'<div class="empty">لا توجد نتائج مطابقة في هذا اليوم.</div>'}`}
@@ -217,7 +219,7 @@ function lastNDates(n){
  return result.reverse();
 }
 function getAnalytics(){
- const windowDays=lastNDates(app.period),recorded=new Set(app.records.map(recordDate)),days=app.settings.excludeIncompleteDays!==false?windowDays.filter(d=>recorded.has(d)):windowDays,r=app.records.filter(x=>days.includes(recordDate(x)));
+ const windowDays=lastNDates(app.period),recorded=new Set(app.records.filter(diaryEntry).map(recordDate)),days=app.settings.excludeIncompleteDays!==false?windowDays.filter(d=>recorded.has(d)):windowDays,r=app.records.filter(x=>days.includes(recordDate(x)));
  const heads=r.filter(x=>x.type==='headache'),positiveHeads=heads.filter(x=>Number.isFinite(Number(x.severity))&&Number(x.severity)>0);
  const numericDays=new Set(positiveHeads.map(x=>recordDate(x)));
  const describedDays=new Set(r.filter(documentedHeadNote).map(x=>recordDate(x)));
@@ -808,7 +810,7 @@ function botoxNext(last){
  return {expected,date:confirmed?app.settings.botoxAppointment:expected,confirmed};
 }
 function botoxDayFacts(day){
- const records=app.records.filter(r=>r.type!=='botox'&&recordDate(r)===day);
+ const records=app.records.filter(r=>r.type!=='botox'&&diaryEntry(r)&&recordDate(r)===day);
  const heads=records.filter(r=>r.type==='headache'&&Number(r.severity)>0);
  const described=records.some(r=>documentedHeadNote(r));
  const head=heads.some(r=>r.kind==='headache'||r.kind==='migraine')||described;
@@ -1036,7 +1038,7 @@ function exportBotoxCalendar(){
  for(const d of [30,14,7])lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:تبقى '+d+' يوماً على موعد البوتوكس','TRIGGER:-P'+d+'D','END:VALARM');
  lines.push('END:VEVENT','END:VCALENDAR');output(`yawmi-botox-${date}.ics`,lines.join('\r\n')+'\r\n','text/calendar;charset=utf-8');toast('تم تجهيز ملف التقويم؛ افتحه وأضف الحدث في التقويم');
 }
-function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.9.2 (تحليل المحفزات)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">كل التسجيلات في قاعدة بيانات الجهاز IndexedDB. لا يوجد حساب أو مزامنة. يجب حفظ نسخ احتياطية خارج التطبيق لتجنب فقدان البيانات عند حذف التطبيق أو بيانات Safari.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel food-settings-panel"><h3>أصناف الأكل الظاهرة في التسجيل</h3><p class="mini">اختر المربعات التي تريد ظهورها. إخفاء صنف لا يحذف تسجيلاته القديمة.</p><div class="food-setting-grid">${allFoodTags().map(tag=>`<label class="food-setting-item"><input type="checkbox" data-food-setting="${E(tag)}" ${activeFoodTags().includes(tag)?'checked':''}><span>${E(tag)}</span></label>`).join('')}</div><div class="food-add-row"><input id="new-food-tag" type="text" maxlength="32" placeholder="أضف صنفًا جديدًا"><button type="button" class="btn secondary small" data-add-food-setting>إضافة</button></div><button type="button" class="btn secondary small" data-save-food-settings>حفظ قائمة الأكل</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال النوم المختصر، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تصدير PDF منسق مخصص، ومزامنة RingConn المباشرة (غير معتمدة).</p></div>`}
+function renderSettings(){const diff=app.settings.lastBackup?Math.floor((now()-new Date(app.settings.lastBackup))/86400000):null,warn=diff===null?'لم تُنشئ نسخة احتياطية بعد':diff>=30?`مر ${diff} يومًا على آخر نسخة احتياطية`:`آخر نسخة احتياطية قبل ${diff} يومًا`;return `<div class="view-title"><div><h1>الإعدادات</h1><span class="sub">الخصوصية والتخصيص · v1.9.3 + RingConn Sync (تجريبي)</span></div></div><div class="panel soft"><h3>البيانات على الآيفون</h3><p class="info">سجلات يومي محفوظة في IndexedDB على جهازك. يمكن تفعيل مزامنة النوم فقط بشكل اختياري عبر Cloudflare؛ لا تُرفع سجلات الصداع أو الأدوية أو الطعام. احفظ نسخًا احتياطية دوريًا.</p></div><div class="panel"><h3>النسخ الاحتياطي</h3><p class="info">${E(warn)} ${diff===null||diff>=30?'— تذكير هادئ داخل الإعدادات.':''}</p><div class="btn-row"><button class="btn" data-export="json">حفظ JSON</button><button class="btn secondary" data-import="1">استعادة JSON</button></div><p class="mini">تتضمن النسخة السجلات والأدوية والمفضلة والإعدادات. صور RingConn لا تُحفظ.</p></div><div class="panel"><h3>الإدخال والتخصيص</h3><div class="form-grid"><div class="field"><label>حجم الكاسة (مل)</label><input id="cup-setting" type="number" min="1" value="${app.settings.waterCup}"></div><div class="field"><label>حجم القارورة (مل)</label><input id="bottle-setting" type="number" min="1" value="${app.settings.waterBottle}"></div></div><button class="btn secondary small" data-save-settings="1">حفظ الأحجام</button><div class="field"><label>المظهر</label><select id="theme-setting"><option value="system" ${app.settings.theme==='system'?'selected':''}>حسب الجهاز</option><option value="light" ${app.settings.theme==='light'?'selected':''}>فاتح</option><option value="dark" ${app.settings.theme==='dark'?'selected':''}>داكن</option></select></div></div><div class="panel"><h3>☾ نوم RingConn — Apple Health</h3><p class="info">استيراد مراحل النوم الفعلية (Core / Deep / REM) من Apple Health عبر اختصار Yawmi Sleep Sync. قد يتضمن Health مصادر غير RingConn؛ راجع مصادر النوم في Health. الأيام التي تصل فيها بيانات نوم فقط لا تُعتبر تلقائيًا أيامًا خالية من الصداع. لن يُستبدل نوم أدخلته يدويًا أو عبر صورة.</p><div class="btn-row"><button type="button" class="btn secondary" data-import-sleep="1">استيراد JSON من الاختصار</button></div><p class="mini">للاستيراد التاريخي: زِد فترة Find Health Samples في Shortcuts واحذف Limit واحفظ JSON جديدًا. جرّب أولًا بعدد أيام قليل، واترك السجلات اليدوية كما هي.</p><details class="entry-more" ${app.sleepSync.endpoint?'open':''}><summary>مزامنة تلقائية اختيارية · Cloudflare</summary><p class="info">اختصار الآيفون يرسل مقاطع النوم فقط إلى خدمتك الخاصة عبر HTTPS، ثم يحمّلها يومي عند فتحه أو العودة إليه. هذا ليس اتصالًا مباشرًا بخاتم RingConn ولا مزامنة فورية بالخلفية في الـPWA. الخدمة تحتفظ بمقاطع آخر 45 يومًا، ويحذف مفتاح التخزين نفسه بعد 46 يومًا من آخر إرسال. البيانات ليست مشفّرة طرفيًا داخل حساب Cloudflare.</p><div class="field"><label for="sleep-sync-url">عنوان خدمتك على Cloudflare</label><input id="sleep-sync-url" type="url" inputmode="url" dir="ltr" placeholder="https://yawmi-sleep-sync.XXX.workers.dev" value="${E(app.sleepSync.endpoint||'')}"></div><div class="field"><label for="sleep-sync-token">رمز الربط السري</label><input id="sleep-sync-token" type="password" dir="ltr" autocomplete="off" placeholder="رمز عشوائي خاص بك" value="${E(app.sleepSync.token||'')}"></div><div class="btn-row"><button type="button" class="btn secondary small" data-generate-sleep-token="1">إنشاء رمز قوي</button><button type="button" class="btn ghost small" data-copy-sleep-token="1">نسخ الرمز</button></div><div class="btn-row"><button type="button" class="btn" data-save-sleep-sync="1">حفظ الربط</button><button type="button" class="btn secondary" data-pull-sleep="1">مزامنة الآن</button><button type="button" class="btn ghost" data-disable-sleep-sync="1">إيقاف الربط</button></div><p class="mini">${E(app.sleepSync.lastError?'آخر خطأ: '+app.sleepSync.lastError:app.sleepSync.lastSyncAt?'آخر تحقق: '+new Date(app.sleepSync.lastSyncAt).toLocaleString('ar-SA'):'لا يوجد اتصال مفعل بعد.')} الرمز يبقى في هذا الجهاز ولا يدخل في نسخة بيانات يومي الاحتياطية. لا تشاركه مع أحد.</p><button type="button" class="btn ghost small" data-clear-remote-sleep="1">حذف مقاطع النوم من الخدمة السحابية</button></details></div><div class="panel food-settings-panel"><h3>أصناف الأكل الظاهرة في التسجيل</h3><p class="mini">اختر المربعات التي تريد ظهورها. إخفاء صنف لا يحذف تسجيلاته القديمة.</p><div class="food-setting-grid">${allFoodTags().map(tag=>`<label class="food-setting-item"><input type="checkbox" data-food-setting="${E(tag)}" ${activeFoodTags().includes(tag)?'checked':''}><span>${E(tag)}</span></label>`).join('')}</div><div class="food-add-row"><input id="new-food-tag" type="text" maxlength="32" placeholder="أضف صنفًا جديدًا"><button type="button" class="btn secondary small" data-add-food-setting>إضافة</button></div><button type="button" class="btn secondary small" data-save-food-settings>حفظ قائمة الأكل</button></div><div class="panel"><h3>حالة النسخة الأولية</h3><p class="info">منفذ الآن: تسجيلات يومية، صداع ومواقع الرأس، ربط النوبات مبدئيًا، إدخال النوم المختصر، الحفظ المحلي، تقويم، تحليلات أساسية، نسخ JSON، تصدير CSV.</p><p class="info">بحاجة لاستكمال/اختبار: دمج وفصل النوبات يدويًا بواجهة كاملة، استيراد Excel، تصدير PDF منسق مخصص، ومزامنة RingConn عبر Apple Health وShortcuts (تتطلب إعداد خدمة اختيارية).</p></div>`}
 // Keep per-tab vertical position, open <details>, and horizontal chart position.
 // A rerender (filters, records, tab changes) must not silently collapse panels.
 const viewMemory={renderedTab:null,tabs:Object.create(null),generation:0};
@@ -1141,6 +1143,7 @@ function showSleepReview(fields={},raw='',blob=null,confidence=null,parsed=null)
   const previous=app.records.find(x=>x.type==='sleep'&&x.sleepDate===v.sleepDate);
   if(previous&&!confirm('يوجد نوم مسجل بهذا التاريخ. هل تريد تحديثه بدل إضافة تسجيل مكرر؟'))return;
   const R={...previous,id:previous?.id||uid(),type:'sleep',at:atDate(v.sleepDate,'09:00'),sleepDate:v.sleepDate,...v,source:'ringconn',confidence:confidence===null?null:confidence,timeApprox:false};
+  delete R.syncOrigin; R.manualOverride=true;
   delete R.rawText;await persist(R);closeModal();
  };
 }
@@ -1148,6 +1151,72 @@ function openEvent(id){const r=app.records.find(x=>x.id===id);if(!r)return;if(r.
 async function splitEpisode(id){const r=app.records.find(x=>x.id===id);if(!r)return;const newId=uid();const group=app.records.filter(x=>x.type==='headache'&&x.episodeId===r.episodeId&&new Date(x.at)>=new Date(r.at));if(group.length<1)return;app.undo={kind:'batch',previous:group.map(x=>({...x}))};for(const x of group){x.episodeId=newId;await store.put(x)}closeModal();render();toast('تم فصل النوبة',true)}
 async function mergeEpisode(id){const r=app.records.find(x=>x.id===id);if(!r)return;const prior=sorted(app.records.filter(x=>x.type==='headache'&&x.episodeId!==r.episodeId&&new Date(x.at)<new Date(r.at)))[0];if(!prior){toast('لا توجد نوبة سابقة للدمج');return}const group=app.records.filter(x=>x.type==='headache'&&x.episodeId===r.episodeId);app.undo={kind:'batch',previous:group.map(x=>({...x}))};for(const x of group){x.episodeId=prior.episodeId;await store.put(x)}closeModal();render();toast('تم دمج النوبة مع السابقة',true)}
 function output(name,contents,mime){const blob=new Blob([contents],{type:mime});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),120000)}
+// -- RingConn → Apple Health → iOS Shortcuts → (optional Cloudflare) → local diary --
+async function saveSleepSyncConfig(){
+  let endpoint=($('#sleep-sync-url')?.value||'').trim().replace(/\/+$/,'').replace(/\/sleep$/,'');
+  const token=($('#sleep-sync-token')?.value||'').trim();
+  try{
+    const u=new URL(endpoint);
+    if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||!u.hostname)throw Error('استعمل رابط HTTPS للخدمة بدون كلمات مرور في الرابط');
+    if(token.length<32||token.length>256||/\s/.test(token))throw Error('الرمز يجب أن يكون قويًا (32 حرفًا على الأقل) بدون مسافات');
+  }catch(err){toast('تعذّر حفظ الربط: '+(err.message||'الرابط غير صحيح'));return}
+  app.sleepSync={endpoint,token,lastSyncAt:null,lastError:''};
+  await store.setMeta('sleepSyncConfig',app.sleepSync);
+  render();toast('تم حفظ رابط الخدمة والرمز محليًا. الآن اربط الاختصار بالخدمة.');
+}
+async function applySleepPlan(plan,{silent=false}={}){
+  const currentTime=iso(now());
+  for(const r of plan.rows){
+    const old=app.records.findIndex(x=>x.id===r.id);
+    const next={...r,updatedAt:currentTime};
+    await store.put(next);
+    if(old===-1)app.records.push(next);else app.records[old]=next;
+  }
+  if(plan.rows.length)render();
+  if(!silent)toast(`تم استيراد ${plan.added} نوم جديد وتحديث ${plan.updated}. محمي: ${plan.protected}، بيانات أقصر مُتجاهلة: ${plan.smaller}.`);
+  return plan.rows.length;
+}
+async function receiveSleepFile(file){
+  try{
+    if(file.size>4000000)throw Error('ملف كبير جدًا؛ جرّب استيراد فترة أقصر');
+    const samples=parseSleepSamples(await file.text());
+    const plan=planSleepImport(samples,app.records);
+    openModal('مراجعة استيراد النوم',`<div class="panel soft"><h3>نتيجة قراءة الملف</h3><div class="kv"><span>مقاطع سليمة</span><b>${samples.length}</b></div><div class="kv"><span>ليالٍ مكتملة (≥ ساعتين)</span><b>${plan.sessions}</b></div><div class="kv"><span>نوم جديد</span><b>${plan.added}</b></div><div class="kv"><span>تحديث نوم تمت مزامنته سابقًا</span><b>${plan.updated}</b></div><div class="kv"><span>تسجيلات يدوية/صور محمية</span><b>${plan.protected}</b></div><div class="kv"><span>تحديثات غير مكتملة مُتجاهلة</span><b>${plan.smaller}</b></div></div><p class="mini">سجل النوم يُنسب إلى يوم الاستيقاظ. يحسب يومي Core وDeep وREM دون Awake وIn Bed، ويختار أطول نومة في يوم الاستيقاظ. لا يستورد الغفوات تلقائيًا. قد تتضمن بيانات Apple Health مصادر أخرى غير RingConn؛ راجع مصادر النوم قبل الاعتماد عليها.</p><div class="btn-row"><button class="btn" id="confirm-sleep-import" ${plan.rows.length?'':'disabled'}>استيراد ${plan.rows.length} ليلة</button><button class="btn ghost" data-close="modal">إلغاء</button></div>`);
+    $('#confirm-sleep-import').onclick=async()=>{try{await applySleepPlan(plan);closeModal()}catch(err){toast('فشل الحفظ: '+err.message)}};
+  }catch(err){toast('تعذّر قراءة نوم RingConn: '+err.message)}
+}
+async function pullSleepSync({manual=false}={}){
+  if(app.sleepSyncBusy)return;
+  const {endpoint,token}=app.sleepSync;
+  if(!endpoint||!token){if(manual)toast('احفظ رابط Cloudflare والرمز أولًا');return}
+  app.sleepSyncBusy=true;
+  try{
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),15000);
+    let resp;
+    try{resp=await fetch(endpoint+'/sleep',{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:ctrl.signal})}finally{clearTimeout(timer)}
+    if(!resp.ok)throw Error(resp.status===401?'رمز الربط غير مطابق':`استجابة الخدمة ${resp.status}`);
+    const data=await resp.json(),samples=parseSleepSamples(data,{maxSamples:10000});
+    const plan=planSleepImport(samples,app.records);
+    await applySleepPlan(plan,{silent:true});
+    app.sleepSync.lastSyncAt=iso(now());app.sleepSync.lastError='';
+    await store.setMeta('sleepSyncConfig',app.sleepSync);
+    if(manual){render();toast(`المزامنة اكتملت: ${plan.added} جديد، ${plan.updated} محدث، ${plan.protected} محفوظ يدويًا. المقاطع: ${samples.length}.`)}
+  }catch(err){
+    app.sleepSync.lastError=err.name==='AbortError'?'انتهت مهلة الاتصال':String(err.message||err).slice(0,120);
+    if(manual)toast('تعذر جلب النوم: '+app.sleepSync.lastError);
+    await store.setMeta('sleepSyncConfig',app.sleepSync);
+  }finally{app.sleepSyncBusy=false}
+}
+async function clearRemoteSleep(){
+  if(!app.sleepSync.endpoint||!app.sleepSync.token){toast('فعّل الربط أولًا');return}
+  if(!confirm('هل تريد حذف جميع مقاطع النوم الموجودة على خدمتك السحابية؟ لن تُحذف بيانات يومي المحلية.'))return;
+  try{
+    const res=await fetch(app.sleepSync.endpoint+'/sleep',{method:'DELETE',headers:{Authorization:'Bearer '+app.sleepSync.token}});
+    if(!res.ok)throw Error('الخدمة أعادت '+res.status);
+    toast('تم مسح مقاطع النوم من الخدمة السحابية. السجلات المحلية محفوظة.');
+  }catch(e){toast('تعذر الحذف: '+e.message)}
+}
 async function backup(){const settings={...app.settings,lastBackup:iso(now())};const payload={format:'DailyHealth-PWA',version:1,createdAt:iso(now()),records:app.records,settings};output(`daily-health-backup-${localDate(now())}.json`,JSON.stringify(payload,null,2),'application/json;charset=utf-8');app.settings.lastBackup=settings.lastBackup;await store.setMeta('settings',settings);render();toast('تم تجهيز النسخة. احفظ الملف في «الملفات» أو iCloud Drive.')}
 function validBackup(payload){return payload&&payload.format==='DailyHealth-PWA'&&payload.version===1&&Array.isArray(payload.records)&&payload.records.every(r=>r&&typeof r.id==='string'&&r.id.length<130&&typeof r.type==='string'&&typeof r.at==='string'&&!Number.isNaN(Date.parse(r.at)))&&payload.records.length<150000}
 async function receiveBackup(file){try{const p=JSON.parse(await file.text());if(!validBackup(p))throw Error('ملف غير متوافق أو تالف');const exists=new Set(app.records.map(r=>r.id)),n=p.records.filter(r=>!exists.has(r.id)).length,conflicts=p.records.filter(r=>exists.has(r.id)&&JSON.stringify(app.records.find(x=>x.id===r.id))!==JSON.stringify(r)).length;
@@ -1164,7 +1233,7 @@ function doctorReportModel(scope='90'){
  const days=lastNDates(scope==='analysis'?app.period:Number(scope)).filter(d=>d<today).sort();
  const inScope=new Set(days);
  const all=app.records.filter(r=>inScope.has(recordDate(r)));
- const clinical=all.filter(r=>r.type!=='botox');
+ const clinical=all.filter(r=>r.type!=='botox' && diaryEntry(r));
  const activeDates=clinical.map(recordDate).sort();
  const first=activeDates[0]||null;
  // Count only completed days following the first actual diary entry; earlier
@@ -1370,6 +1439,24 @@ function bind(){
   const mon=e.target.closest('[data-month]');if(mon){moveMonth(+mon.dataset.month);return}
   const added=e.target.closest('[data-add-at-date]');if(added){openModal('إضافة إلى '+fmtShort(added.dataset.addAtDate),`<div class="quick-grid">${['headache','water','sleep','coffee','food','med','note'].map(x=>`<button class="quick-btn" data-past-type="${x}" data-past-date="${added.dataset.addAtDate}"><span class="q-ic">${icons[x]}</span><span>${types[x]}</span></button>`).join('')}</div>`);return}
   const past=e.target.closest('[data-past-type]');if(past){app.entryDate=past.dataset.pastDate;manualEntry(past.dataset.pastType);return}
+  if(e.target.closest('[data-import-sleep]')){$('#sleep-json-picker').click();return}
+  if(e.target.closest('[data-generate-sleep-token]')){
+    const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);
+    $('#sleep-sync-token').value=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');toast('تم إنشاء رمز قوي. انسخه ثم استخدمه في Cloudflare والاختصار.');return;
+  }
+  if(e.target.closest('[data-copy-sleep-token]')){
+    const value=$('#sleep-sync-token')?.value||'';
+    if(!value){toast('أنشئ الرمز أولًا');return}
+    try{await navigator.clipboard.writeText(value);toast('تم نسخ الرمز السري')}catch(err){$('#sleep-sync-token').type='text';$('#sleep-sync-token').select();toast('انسخ الرمز المحدد ثم أعد إخفاءه')}
+    return;
+  }
+  if(e.target.closest('[data-save-sleep-sync]')){await saveSleepSyncConfig();return}
+  if(e.target.closest('[data-pull-sleep]')){await pullSleepSync({manual:true});return}
+  if(e.target.closest('[data-disable-sleep-sync]')){
+    if(!confirm('إيقاف المزامنة على هذا الجهاز؟ بيانات النوم التي استوردتها ستبقى.'))return;
+    app.sleepSync={endpoint:'',token:'',lastSyncAt:null,lastError:''};await store.setMeta('sleepSyncConfig',app.sleepSync);render();toast('توقفت المزامنة التلقائية على هذا الجهاز');return;
+  }
+  if(e.target.closest('[data-clear-remote-sleep]')){await clearRemoteSleep();return}
   if(e.target.closest('[data-export="json"]')){await backup();return}
   if(e.target.closest('[data-export="csv"]')){exportCSV();return}
   if(e.target.closest('[data-import]')){$('#json-picker').click();return}
@@ -1399,10 +1486,11 @@ function bind(){
  document.addEventListener('input',e=>{if(e.target.id==='search-field'){const pos=e.target.selectionStart;app.search=e.target.value;const match=recordsDay(app.date).filter(r=>(app.filter==='all'||r.type===app.filter)&&(!app.search||summary(r).toLowerCase().includes(app.search.toLowerCase())||(r.notes||'').toLowerCase().includes(app.search.toLowerCase())));const title=document.querySelector('.section-title');const following=title?.nextElementSibling;let el=following;while(el){const next=el.nextElementSibling;el.remove();el=next}if(title)title.insertAdjacentHTML('afterend',match.length?match.map(eventRow).join(''):'<div class="empty">لا توجد نتائج مطابقة.</div>')}});
  document.addEventListener('change',async e=>{if(e.target.id==='exclude-incomplete'){app.settings.excludeIncompleteDays=e.target.checked;await store.setMeta('settings',app.settings);render();return}if(e.target.id==='theme-setting'){app.settings.theme=e.target.value;theme();await store.setMeta('settings',app.settings)}if(e.target.dataset.analyticConfig){const key=e.target.dataset.analyticConfig,mins={sleepHours:4,waterMl:200,timingMinutes:15,routineDeviation:30,wakeTolerance:15},maxs={sleepHours:12,waterMl:5000,timingMinutes:240,routineDeviation:240,wakeTolerance:180},n=Number(e.target.value);if(!Number.isFinite(n)||n<mins[key]||n>maxs[key]){toast('القيمة خارج النطاق المقبول');return}app.settings.analytics={...analysisConfig(),[key]:n};await store.setMeta('settings',app.settings);render();toast('تم تحديث معيار المقارنة')}});
  $('#json-picker').onchange=e=>{const f=e.target.files?.[0];if(f)receiveBackup(f);e.target.value=''};
+ $('#sleep-json-picker').onchange=e=>{const f=e.target.files?.[0];if(f)receiveSleepFile(f);e.target.value=''};
  $('#theme-btn').onclick=async()=>{app.settings.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';theme();await store.setMeta('settings',app.settings)};
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!layer.hidden)closeModal()});
 }
-async function main(){try{app.records=await store.getAll();app.settings={...app.settings,...await store.getMeta('settings',{})};$('#save-status').textContent='✓ محفوظ محليًا'}catch(e){$('#save-status').textContent='خطأ في التخزين';toast('التخزين المحلي غير متاح. افتح التطبيق عبر HTTPS أو localhost.')}
- theme();bind();render();if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+async function main(){try{app.records=await store.getAll();app.settings={...app.settings,...await store.getMeta('settings',{})};app.sleepSync={...app.sleepSync,...await store.getMeta('sleepSyncConfig',{})};$('#save-status').textContent='✓ محفوظ محليًا'}catch(e){$('#save-status').textContent='خطأ في التخزين';toast('التخزين المحلي غير متاح. افتح التطبيق عبر HTTPS أو localhost.')}
+ theme();bind();render();if(app.sleepSync.endpoint)pullSleepSync();document.addEventListener('visibilitychange',()=>{if(!document.hidden&&app.sleepSync.endpoint&&(!app.sleepSync.lastSyncAt||Date.now()-Date.parse(app.sleepSync.lastSyncAt)>3*3600000))pullSleepSync()});if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
 main();
